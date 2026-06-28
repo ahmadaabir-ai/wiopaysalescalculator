@@ -188,3 +188,55 @@ Commercial floors              defaultFloors                controllingFloor
 Every edit calls `notifyMcc()` from `mccData.js`. `main.js` subscribes once
 and triggers a full re-render — Manual, Sales, and Backend tabs all stay in
 sync without any extra wiring.
+
+---
+
+## 8. P&L summary flow (v1.1.0)
+
+The Manual Calculator panel hosts two **channel-isolated** sub-tabs (PG / POS).
+Each sub-tab carries its own AOV, txnCount, debitMix, requestedMdrPct, e-com
+brackets (PG) or terminal fields (POS), plus an `active` flag. The shared
+Sales Context card carries only merchant profile (MCC, risk) + banking
+footprint (balance, FX, spend, loans, tenure).
+
+```
+sharedState = { industry, risk, balance, xborder, spend, loans, loanTenure }
+pgState     = { active, aov, txnCount, debitMix, requestedMdrPct, ecomBrackets }
+posState    = { active, aov, txnCount, debitMix, requestedMdrPct,
+                numTerminals, chargedPerTerminal, setupFeeMonthly }
+
+buildChannelInput(channel, channelState, sharedState)
+   -> engine input. PG uses defaultCostsPG + ecom brackets. POS uses
+      defaultCostsPOS + terminal fields, and zeroes e-com brackets so
+      aovFeeAnnual = 0 (POS doesn't levy per-txn e-com fees).
+
+runChannel(channel, channelState, sharedState)
+   -> { pgCostPct, pgRev, pgCostAnnual, pgOnlyNet, engine }
+      (channel net = pgRev - pgCostAnnual, banking EXCLUDED)
+```
+
+### P&L roll-up
+
+```
+pgNet   = pg.active  ? (pgRev  - pgCost)  : 0
+posNet  = pos.active ? (posRev - posCost) : 0
+channelNet  = pgNet + posNet
+bankingRev  = computeBankingRev(shared)   // depends only on shared profile
+totalRelNet = channelNet + bankingRev
+shortfall   = max(0, -totalRelNet)
+```
+
+The P&L tab renders a 3-column table (PG · POS · Total) with Revenue / Cost
+/ Channel P&L rows. Inactive columns show AED 0. Below the table: + Banking
+Revenue, = Total Relationship Net, verdict pill, sales pitch.
+
+### Approval paths on P&L tab
+
+The approval-path block (standalone cards, loan-tenure matrix, BYO grid)
+moved from the Manual Calculator to the P&L tab. The gap it closes is now
+the **total relationship shortfall** (not a per-channel deficit). It reuses
+`initApprovalPath`, `rebalanceApprovalPath`, `pathRevenue`, `pathTotalRev`,
+`revToAed`, and `loanTenureMatrix` unchanged — banking yields are shared,
+so the AED math is identical to before. If `shortfall === 0`, the block
+shows "No additional relationship required" instead.
+

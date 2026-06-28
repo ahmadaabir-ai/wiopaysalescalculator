@@ -142,3 +142,115 @@ cards as the Manual Calculator when the same MDR is entered.
 - PG Cost % KPI on Manual tab reflects the new value immediately
   (mccData `notify()` fires and `subscribe(render)` re-renders).
 - Pressing "Reset to defaults" reverts the change and refreshes.
+
+---
+
+## TC-PNL-001 — PG-only merchant, POS column reads AED 0
+
+**Goal:** When only the PG channel is active, the P&L POS column reads AED 0
+across Revenue / Cost / Channel P&L rows.
+
+**Inputs**
+- Shared: any merchant profile.
+- Manual tab → PG sub-tab: Active **On**. Set any AOV / txns / MDR.
+- Manual tab → POS sub-tab: Active **Off**.
+
+**Action**
+- Switch to the P&L tab.
+
+**Expected**
+- POS column shows AED 0 for Revenue, Cost, Channel P&L rows (styled muted).
+- PG column shows the channel figures.
+- Total column = PG figures + banking on the Total Relationship Net row.
+
+---
+
+## TC-PNL-002 — POS-only merchant, PG column reads AED 0
+
+**Goal:** When only the POS channel is active, the P&L PG column reads AED 0
+across Revenue / Cost / Channel P&L rows.
+
+**Inputs**
+- Manual tab → PG sub-tab: Active **Off**.
+- Manual tab → POS sub-tab: Active **On**. Configure terminals + MDR.
+
+**Action**
+- Switch to the P&L tab.
+
+**Expected**
+- PG column shows AED 0 (muted).
+- POS column populated with the POS channel's economics.
+- Total column = POS figures + banking on the Total Relationship Net row.
+
+---
+
+## TC-PNL-003 — Both channels active, totals = sum + banking
+
+**Goal:** When both channels are active, the Total column equals the sum of
+PG and POS column values plus banking revenue (for the relationship net).
+
+**Inputs**
+- Both PG and POS sub-tabs active.
+- Configure distinct AOV / txn / MDR for each.
+- Add a meaningful banking footprint (e.g. balance 500,000).
+
+**Expected**
+- Total Revenue = PG Revenue + POS Revenue.
+- Total Cost   = PG Cost + POS Cost.
+- Total Channel P&L = sum of column channel P&Ls.
+- Total Relationship Net = Total Channel P&L + Banking Revenue.
+
+---
+
+## TC-PNL-004 — Total positive → status `pos`, no approval paths
+
+**Goal:** When Total Relationship Net is non-negative, the approval-path
+block is hidden / shows "No additional relationship required".
+
+**Inputs**
+- Configure a healthy merchant so totalRelNet > 0.
+
+**Expected**
+- Verdict pill is `pos` ("Covered by Channel Economics") or `warn`
+  ("Covered by Banking Relationship").
+- Below the table: standalone cards section shows "No additional
+  relationship required". BYO block is not rendered.
+
+---
+
+## TC-PNL-005 — Total negative → approval paths shown with correct gap
+
+**Goal:** When Total Relationship Net is negative, the approval paths block
+appears and the AED values are sized to the **total** shortfall.
+
+**Inputs**
+- Drive totalRelNet negative (e.g. MDR below cost on both channels, zero
+  banking footprint).
+
+**Expected**
+- Verdict pill is `cond` with text "Additional Relationship Required".
+- Standalone path cards populate. AED values match
+  `shortfall ÷ yield` for each path (balance / spend / FX) and
+  `solveLoanPrincipal(shortfall, rLoan, tenure)` for loan.
+- Loan tenure matrix populates with principal + EMI rows.
+
+---
+
+## TC-PNL-006 — BYO rebalance against TOTAL gap
+
+**Goal:** Build-Your-Own rebalancing redistributes the **total** shortfall
+across remaining drivers — not a per-channel deficit.
+
+**Inputs**
+- Same as TC-PNL-005 (total deficit > 0).
+
+**Action**
+- Wait for BYO inputs to auto-populate from `initApprovalPath(total_gap)`.
+- Change `Balance` to `0`.
+
+**Expected**
+- The other three BYO inputs (Spend / FX / Loan) jump up — each carries 1/3
+  of the **remaining total shortfall** in AED.
+- BYO status line reads
+  `Blended revenue AED X vs shortfall AED Y — shortfall covered`
+  where Y equals the Total Relationship Net deficit (not PG-only / POS-only).

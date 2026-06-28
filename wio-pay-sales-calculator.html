@@ -113,16 +113,25 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   border: 1px solid var(--stroke-primary);
   border-radius: var(--radius-md);
   box-shadow: var(--elev-1);
-  padding: 24px;
+  padding: 20px;
 }
-.card + .card { margin-top: 16px; }
+.card + .card { margin-top: 12px; }
 .card__title {
-  font-family: var(--font-head); font-weight: 500; font-size: 20px; line-height: 24px;
-  margin: 0 0 4px;
+  font-family: var(--font-head); font-weight: 500; font-size: 18px; line-height: 22px;
+  margin: 0 0 2px;
 }
-.card__subtitle { color: var(--fg-mild); font-size: 14px; margin: 0 0 16px; }
+.card__subtitle { color: var(--fg-mild); font-size: 13px; margin: 0 0 12px; }
 
-.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.subsection {
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--stroke-primary);
+  font-family: var(--font-head); font-weight: 500;
+  font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--fg-mild);
+}
+.subsection:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .field__label { font-size: 12px; color: var(--fg-mild); font-family: var(--font-head); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
 .field__hint { font-size: 12px; color: var(--fg-mild); }
 
@@ -308,6 +317,49 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   color: var(--fg-mild);
   margin: 24px 0 8px;
 }
+
+/* Manual Calculator sub-tab strip */
+.subtabs {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--stroke-primary);
+  border-radius: var(--radius-pill); padding: 4px;
+  width: fit-content; margin-bottom: 16px;
+}
+.subtab {
+  border: 0; background: transparent;
+  height: 36px; padding: 0 18px;
+  border-radius: var(--radius-pill);
+  color: var(--fg-mild);
+  font-family: var(--font-head); font-weight: 500; font-size: 13px;
+  cursor: pointer;
+}
+.subtab:hover { background: var(--midnight-10); color: var(--fg-default); }
+.subtab.is-active { background: var(--brand-primary); color: #fff; }
+
+.subpanel { display: none; }
+.subpanel.is-active { display: block; }
+
+/* P&L 3-column table */
+.pnl-table {
+  width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px;
+}
+.pnl-table th, .pnl-table td {
+  padding: 12px 14px; border-bottom: 1px solid var(--midnight-50); text-align: right;
+}
+.pnl-table th { font-family: var(--font-head); font-weight: 500; color: var(--fg-mild); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.pnl-table th:first-child, .pnl-table td:first-child { text-align: left; }
+.pnl-table tr.pnl-total td { font-family: var(--font-head); font-weight: 500; background: var(--midnight-10); }
+.pnl-table .neg { color: var(--red-800); }
+.pnl-col-inactive { color: var(--fg-mild); }
+
+/* Active channel toggle row */
+.channel-toggle {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--midnight-10); padding: 10px 14px;
+  border-radius: var(--radius-sm); margin-bottom: 12px;
+  font-size: 13px;
+}
+.channel-toggle__label { color: var(--fg-mild); font-family: var(--font-head); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -319,9 +371,10 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       </div>
       <nav class="tabs" role="tablist" aria-label="Calculator views">
         <button class="tab is-active" role="tab" data-tab="manual" aria-selected="true">Manual Calculator</button>
-        <button class="tab" role="tab" data-tab="sales" aria-selected="false">Sales Calculator</button>
+        <button class="tab" role="tab" data-tab="pnl" aria-selected="false">P&amp;L</button>
         <button class="tab" role="tab" data-tab="backend" aria-selected="false">Backend Assumptions</button>
       </nav>
+      <button class="btn btn--ghost" id="app-refresh" title="Reset all inputs &amp; backend assumptions to defaults" style="margin-left:8px;">↻ Refresh</button>
     </div>
   </header>
 
@@ -349,139 +402,43 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     transport:  { debit: 0.0050, credit: 0.0050, label: 'Transportation' },
   };
 
-  const mccMarkupTable = {
-    retail: 0.0030, government: 0.0010, utility: 0.0010, education: 0.0010,
-    realestate: 0.0020, petrol: 0.0020, transport: 0.0020,
+  const riskAdj = { low: 0.0000, med: 0.0020, high: 0.0040 };
+
+  const defaultYields    = { rBal: 0.0200, rXb: 0.0060, rDeb: 0.0114, rLoan: 0.0800 };
+  const defaultCostsPG   = { pineLabs: 0.0009, fixedCost: 1.10, debitMix: 0.60 };
+  // POS adds terminal-rental + operating costs (mgmt + paper rolls) on top of the variable stack.
+  const defaultCostsPOS  = {
+    pineLabs: 0.0009,
+    fixedCost: 0.55,
+    debitMix: 0.60,
+    deviceCost: 700,          // AED · per terminal · monthly (rental to Wio)
+    terminalMgmt: 15,         // AED · per terminal · monthly (ops cost)
+    paperRollPer60: 1.10,     // AED · per 60 transactions (ops cost)
   };
-
-  const riskAdj   = { low: 0.0000, med: 0.0020, high: 0.0040 };
-  const riskLabel = { low: 'Low',  med: 'Medium', high: 'High' };
-
-  const tiers = [
-    { name: 'Strategic', mdr: 0.0050, ratio: 0.0150 },
-    { name: 'Premium',   mdr: 0.0075, ratio: 0.0120 },
-    { name: 'Preferred', mdr: 0.0100, ratio: 0.0090 },
-    { name: 'Plus',      mdr: 0.0125, ratio: 0.0060 },
-    { name: 'Standard',  mdr: 0.0150, ratio: 0.0040 },
-    { name: 'Entry',     mdr: 0.0175, ratio: 0.0020 },
-    { name: 'Base',      mdr: 0.0200, ratio: 0.0000 },
-  ];
-
-  const mccTierMDR = {
-    retail:     [0.0050, 0.0075, 0.0100, 0.0125, 0.0150, 0.0175, 0.0200],
-    government: [0.0030, 0.0045, 0.0060, 0.0075, 0.0090, 0.0105, 0.0120],
-    utility:    [0.0030, 0.0045, 0.0060, 0.0075, 0.0090, 0.0105, 0.0120],
-    education:  [0.0040, 0.0055, 0.0070, 0.0085, 0.0100, 0.0115, 0.0130],
-    realestate: [0.0040, 0.0055, 0.0070, 0.0085, 0.0100, 0.0115, 0.0130],
-    petrol:     [0.0035, 0.0050, 0.0065, 0.0080, 0.0095, 0.0110, 0.0125],
-    transport:  [0.0030, 0.0045, 0.0060, 0.0075, 0.0090, 0.0105, 0.0120],
-  };
-
-  const tierRank = {
-    Strategic: 1, Premium: 2, Preferred: 3,
-    Plus: 4, Standard: 5, Entry: 6, Base: 7,
-  };
-
-  const bankingRevTiers = [
-    { label: 'Strategic',  min: 50000, cap: 'Strategic' },
-    { label: 'Premium',    min: 40000, cap: 'Premium'   },
-    { label: 'Strong',     min: 30000, cap: 'Preferred' },
-    { label: 'Moderate',   min: 20000, cap: 'Plus'      },
-    { label: 'Developing', min: 10000, cap: 'Standard'  },
-    { label: 'Low',        min: 5000,  cap: 'Entry'     },
-    { label: 'Very Low',   min: 0,     cap: 'Base'      },
-  ];
-
-  const pgScaleTiers = [
-    { label: 'Enterprise', min: 2500000, cap: 'Strategic' },
-    { label: 'Mid-Market', min: 1500000, cap: 'Premium'   },
-    { label: 'Growth SME', min: 750000,  cap: 'Preferred' },
-    { label: 'SME',        min: 400000,  cap: 'Plus'      },
-    { label: 'Small',      min: 200000,  cap: 'Standard'  },
-    { label: 'Micro',      min: 20000,   cap: 'Entry'     },
-    { label: 'Nano',       min: 0,       cap: 'Base'      },
-  ];
-
-  const CMC_FEE_DEFAULTS = [1.00, 0.75, 0.50, 0.00];
-  const CMC_FEE_BRACKETS = ['0 – 200', '200 – 500', '500 – 1,000', '1,000+'];
-
-  const defaultYields = { rBal: 0.0375, rXb: 0.0060, rDeb: 0.0114, rLoan: 0.0800 };
-  const defaultCosts  = { pineLabs: 0.0009, fixedCost: 1.10, debitMix: 0.60 };
-  const defaultFloors = { netMdrFloorBps: 0, minMonthlyRev: 0 };
 
   const SNAPSHOT = {
     industryInterchange: JSON.parse(JSON.stringify(industryInterchange)),
-    mccMarkupTable:      JSON.parse(JSON.stringify(mccMarkupTable)),
     riskAdj:             JSON.parse(JSON.stringify(riskAdj)),
-    tiers:               JSON.parse(JSON.stringify(tiers)),
-    mccTierMDR:          JSON.parse(JSON.stringify(mccTierMDR)),
-    bankingRevTiers:     JSON.parse(JSON.stringify(bankingRevTiers)),
-    pgScaleTiers:        JSON.parse(JSON.stringify(pgScaleTiers)),
-    CMC_FEE_DEFAULTS:    [...CMC_FEE_DEFAULTS],
     defaultYields:       { ...defaultYields },
-    defaultCosts:        { ...defaultCosts },
-    defaultFloors:       { ...defaultFloors },
+    defaultCostsPG:      { ...defaultCostsPG },
+    defaultCostsPOS:     { ...defaultCostsPOS },
   };
 
   function resetMccDefaults() {
     Object.keys(industryInterchange).forEach(k => delete industryInterchange[k]);
     Object.assign(industryInterchange, JSON.parse(JSON.stringify(SNAPSHOT.industryInterchange)));
-
-    Object.keys(mccMarkupTable).forEach(k => delete mccMarkupTable[k]);
-    Object.assign(mccMarkupTable, JSON.parse(JSON.stringify(SNAPSHOT.mccMarkupTable)));
-
     Object.assign(riskAdj, JSON.parse(JSON.stringify(SNAPSHOT.riskAdj)));
-
-    tiers.length = 0;
-    JSON.parse(JSON.stringify(SNAPSHOT.tiers)).forEach(t => tiers.push(t));
-
-    Object.keys(mccTierMDR).forEach(k => delete mccTierMDR[k]);
-    Object.assign(mccTierMDR, JSON.parse(JSON.stringify(SNAPSHOT.mccTierMDR)));
-
-    bankingRevTiers.length = 0;
-    JSON.parse(JSON.stringify(SNAPSHOT.bankingRevTiers)).forEach(t => bankingRevTiers.push(t));
-
-    pgScaleTiers.length = 0;
-    JSON.parse(JSON.stringify(SNAPSHOT.pgScaleTiers)).forEach(t => pgScaleTiers.push(t));
-
-    CMC_FEE_DEFAULTS.length = 0;
-    SNAPSHOT.CMC_FEE_DEFAULTS.forEach(v => CMC_FEE_DEFAULTS.push(v));
-
-    Object.assign(defaultYields, SNAPSHOT.defaultYields);
-    Object.assign(defaultCosts,  SNAPSHOT.defaultCosts);
-    Object.assign(defaultFloors, SNAPSHOT.defaultFloors);
+    Object.assign(defaultYields,   SNAPSHOT.defaultYields);
+    Object.assign(defaultCostsPG,  SNAPSHOT.defaultCostsPG);
+    Object.assign(defaultCostsPOS, SNAPSHOT.defaultCostsPOS);
     notifyMcc();
   }
 
-  function vintageFloor(months, industry) {
-    const mdrs = mccTierMDR[industry] || mccTierMDR.retail;
-    if (months < 6)  return mdrs[6];
-    if (months < 12) return mdrs[2];
-    return mdrs[0];
-  }
-  function vintageLabel(months) {
-    if (months < 6)  return '< 6 months';
-    if (months < 12) return '6–12 months';
-    return '12+ months';
-  }
   function aovCharge(aov, b1, b2, b3, b4) {
     if (aov < 200)  return b1;
     if (aov < 500)  return b2;
     if (aov < 1000) return b3;
     return b4;
-  }
-  function aovBucketLabel(aov) {
-    if (aov < 200)  return '0–200';
-    if (aov < 500)  return '200–500';
-    if (aov < 1000) return '500–1,000';
-    return '1,000+';
-  }
-  function getMccTierMDR(industry, tierName) {
-    const mdrs = mccTierMDR[industry] || mccTierMDR.retail;
-    return mdrs[tierRank[tierName] - 1];
-  }
-  function getMccMarkup(industry) {
-    return mccMarkupTable[industry] !== undefined ? mccMarkupTable[industry] : mccMarkupTable.retail;
   }
 
   const mccSubscribers = new Set();
@@ -499,12 +456,16 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   // pricingEngine — canonical engine (mirror of LOGIC_EXTRACT §4)
   // ==========================================================================
 
+  // Pure actuals: cost stack + 4-component banking revenue + PG profile.
+  // No tier mappings, no caps, no recommended MDR — just raw economics.
   function runPricingEngine(inp) {
     const {
-      industry, risk, months, tlOverride,
+      industry,
       balance, xborder, spend, loans, loanTenure,
       aov, txnCount,
-      debitMix, pineLabs, fixedCost, netMdrFloor, minRev,
+      debitMix, pineLabs, fixedCost,
+      deviceCost, numTerminals, terminalMgmt, paperRollPer60,
+      chargedPerTerminal, setupFeeMonthly,
       rBal, rXb, rDeb, rLoan, b1, b2, b3, b4,
     } = inp;
 
@@ -512,7 +473,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     const creditMix = 1 - debitMix;
     const weightedInterchange = ic.debit * debitMix + ic.credit * creditMix;
     const fixedCostPctOfAOV = fixedCost / Math.max(1, aov);
-    const pgCostPct = weightedInterchange + pineLabs + fixedCostPctOfAOV;
+    const variableCostPct = weightedInterchange + pineLabs + fixedCostPctOfAOV;
 
     const revBal = balance * rBal;
     const revXb  = xborder * rXb;
@@ -535,55 +496,47 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     const txnsYear     = pgYearVol / Math.max(1, aov);
     const aovFee       = aovCharge(aov, b1, b2, b3, b4);
     const aovFeeAnnual = aovFee * txnsYear;
-    const pgCostAnnual = pgYearVol * pgCostPct;
+    const variableCostAnnual = pgYearVol * variableCostPct;
 
-    const ratio     = pgYearVol > 0 ? bankingRev / pgYearVol : 0;
-    const ratioTier = tiers.find(t => ratio >= t.ratio) || tiers[tiers.length - 1];
+    // ----- POS terminal economics (treated as a separate calculation) -----
+    // Terminal procurement and terminal charge are BOTH one-time / annual figures
+    // (no × 12). They are netted against each other; only the residual (if any)
+    // flows into POS Other Cost. Excess terminal revenue (when the merchant pays
+    // more than procurement) shows up on the revenue side.
+    const nT                       = Math.max(0, numTerminals || 0);
+    const grossTerminalProcAnnual  = nT * (deviceCost          || 0);  // 700 × numT
+    const grossTerminalRevAnnual   = nT * (chargedPerTerminal  || 0);
+    const netTerminalProcAnnual    = Math.max(0, grossTerminalProcAnnual - grossTerminalRevAnnual);
+    const excessTerminalRevAnnual  = Math.max(0, grossTerminalRevAnnual - grossTerminalProcAnnual);
 
-    const bankingEntry   = bankingRevTiers.find(t => bankingRev >= t.min);
-    const bankingCapName = bankingEntry.cap;
+    // Recurring POS operating costs (independent of terminal procurement offset).
+    const terminalMgmtAnnual       = nT * (terminalMgmt   || 0) * 12;       // AED 15 / terminal / month
+    const paperRollAnnual          = (txnsYear / 60) * (paperRollPer60 || 0); // AED 1.10 / 60 txns
 
-    const pgScaleEntry   = pgScaleTiers.find(t => pgYearVol >= t.min);
-    const pgScaleCapName = pgScaleEntry.cap;
+    // POS Other Cost = net unrecovered procurement + management + paper roll.
+    const posOtherCostAnnual       = netTerminalProcAnnual + terminalMgmtAnnual + paperRollAnnual;
 
-    const prelimRank = Math.max(
-      tierRank[ratioTier.name],
-      tierRank[bankingCapName],
-      tierRank[pgScaleCapName],
-    );
-    const prelimTier = tiers.find(t => tierRank[t.name] === prelimRank);
+    // Setup fee is a separate monthly recurring revenue stream.
+    const setupFeeAnnual           = (setupFeeMonthly || 0) * 12;
 
-    const floorVal  = tlOverride ? 0 : vintageFloor(months, industry);
-    const prelimIdx = tiers.indexOf(prelimTier);
+    // POS-only extra revenue added to the revenue waterfall.
+    const posExtraRevenueAnnual    = excessTerminalRevAnnual + setupFeeAnnual;
 
-    let o2FinalTier = prelimTier, o2Final = 0, economicsBump = false;
-    for (let i = prelimIdx; i < tiers.length; i++) {
-      const t   = tiers[i];
-      const mdr = Math.max(getMccTierMDR(industry, t.name), floorVal) + riskAdj[risk];
-      const rev = mdr * pgYearVol + aovFeeAnnual;
-      const net = bankingRev + rev - pgCostAnnual;
-      if (net / 12 >= minRev || i === tiers.length - 1) {
-        o2FinalTier = t;
-        o2Final     = mdr;
-        if (i > prelimIdx) economicsBump = true;
-        break;
-      }
-    }
-
-    const o2PgRev  = o2Final * pgYearVol + aovFeeAnnual;
-    const o2Margin = o2PgRev - pgCostAnnual;
-    const o2Net    = bankingRev + o2PgRev - pgCostAnnual;
+    // Total cost (used for net calc) includes POS Other Cost.
+    const pgCostAnnual = variableCostAnnual + posOtherCostAnnual;
+    // Displayed "PG / POS Cost %" — ONLY payment-processing rate. NO terminal economics.
+    const pgCostPct    = variableCostPct;
 
     return {
       pgCostPct, pgCostAnnual, bankingRev,
       revBal, revXb, revDeb, revLoan, loanEMI,
       pgYearVol, txnsYear, aovFee, aovFeeAnnual,
-      ratio, ratioTier, bankingEntry, bankingCapName,
-      pgScaleEntry, pgScaleCapName,
-      prelimTier, prelimRank, economicsBump,
-      o2FinalTier, o2Final, floorVal,
-      o2PgRev, o2Margin, o2Net,
-      baseMDR: getMccTierMDR(industry, 'Base'),
+      variableCostPct, variableCostAnnual,
+      grossTerminalProcAnnual, grossTerminalRevAnnual,
+      netTerminalProcAnnual,   excessTerminalRevAnnual,
+      terminalMgmtAnnual, paperRollAnnual,
+      posOtherCostAnnual,
+      setupFeeAnnual, posExtraRevenueAnnual,
     };
   }
 
@@ -679,64 +632,35 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   // manualCalculator — reverse logic for a single requested MDR
   // ==========================================================================
 
-  function calcTierRevGap(r, inp, reqMdrPct) {
-    const industryMdrs = mccTierMDR[inp.industry] || mccTierMDR.retail;
-    const adjTiers   = tiers.map((t, i) => ({ ...t, mdr: industryMdrs[i] }));
-    const dispMarkup = getMccMarkup(inp.industry);
-    const dispRisk   = riskAdj[inp.risk] || 0;
-    const targetTier = adjTiers.reduce((best, t) => {
-      const tDisp    = t.mdr    + dispMarkup + dispRisk;
-      const bestDisp = best.mdr + dispMarkup + dispRisk;
-      return Math.abs(tDisp - reqMdrPct) < Math.abs(bestDisp - reqMdrPct) ? t : best;
-    });
-    const reqBankEntry = bankingRevTiers.slice().reverse().find(
-      t => tierRank[t.cap] <= tierRank[targetTier.name],
-    );
-    const totalReq = reqBankEntry ? reqBankEntry.min : 0;
-    const revGap   = Math.max(0, totalReq - (r ? r.bankingRev : 0));
-    return { revGap, targetTier, reqBankEntry };
-  }
-
+  // Actuals-only manual calculator. Risk adjustment is added by the requested
+  // MDR if needed by the user — the engine reads PG revenue as
+  // `reqMdrPct × pgYearVol + per-txn fee revenue`. No tier mapping.
   function runManualCalculator(inp, reqMdrPct) {
     const r = runPricingEngine(inp);
-    const { revGap, targetTier, reqBankEntry } = calcTierRevGap(r, inp, reqMdrPct);
 
-    const pgRev      = reqMdrPct * r.pgYearVol + r.aovFeeAnnual;
-    const pgOnlyNet  = pgRev - r.pgCostAnnual;
+    // PG/POS revenue = MDR revenue + per-txn fee + POS-only extras (terminal charge + setup fee).
+    const pgRev       = reqMdrPct * r.pgYearVol + r.aovFeeAnnual + r.posExtraRevenueAnnual;
+    const pgOnlyNet   = pgRev - r.pgCostAnnual;
     const totalRelNet = r.bankingRev + pgOnlyNet;
 
-    const netMdrFloorBps = inp.netMdrFloor != null ? inp.netMdrFloor : defaultFloors.netMdrFloorBps;
-    const minMonthlyRev  = inp.minRev      != null ? inp.minRev      : defaultFloors.minMonthlyRev;
-    const floorFromBps   = (netMdrFloorBps / 10000) * r.pgYearVol;
-    const floorFromMin   = minMonthlyRev * 12;
-    const controllingFloor = Math.max(floorFromBps, floorFromMin);
-    const controllingFloorIsMdr = floorFromBps >= floorFromMin && netMdrFloorBps > 0;
-
-    const pgCovers  = pgOnlyNet  >= controllingFloor;
-    const relCovers = totalRelNet >= controllingFloor;
-
-    const minAllowedMdr   = vintageFloor(inp.months, inp.industry) + (riskAdj[inp.risk] || 0);
-    const belowPolicyFloor = reqMdrPct < minAllowedMdr && !inp.tlOverride;
-
+    // Three states, all driven by actuals:
+    //   pos  — PG-only economics break even or better on their own
+    //   warn — PG-only loses money but banking revenue makes the total positive
+    //   cond — Total is loss-making; show approval paths to close the gap
     let status, statusLabel;
-    if (belowPolicyFloor) {
-      status      = 'neg';
-      statusLabel = 'Manual Exception Required — Below Policy Floor';
-    } else if (pgCovers) {
+    if (pgOnlyNet >= 0) {
       status      = 'pos';
       statusLabel = 'Covered by PG Economics';
-    } else if (relCovers) {
+    } else if (totalRelNet >= 0) {
       status      = 'warn';
       statusLabel = 'Covered by Banking Relationship';
-    } else if (revGap > 0) {
-      status      = 'cond';
-      statusLabel = 'Conditionally Viable — Additional Relationship Required';
     } else {
-      status      = 'neg';
-      statusLabel = 'Manual Review Required';
+      status      = 'cond';
+      statusLabel = 'Additional Relationship Required';
     }
 
-    const shortfall  = Math.max(0, controllingFloor - totalRelNet);
+    // Shortfall = AED of banking revenue needed to bring totalRelNet to break-even.
+    const shortfall  = Math.max(0, -totalRelNet);
     const reqBalance = (inp.rBal > 0) ? shortfall / inp.rBal : 0;
 
     return {
@@ -744,10 +668,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       requestedMdrPct: reqMdrPct,
       pgCostPct: r.pgCostPct, pgYearVol: r.pgYearVol,
       pgRev, pgOnlyNet, bankingRev: r.bankingRev, totalRelNet,
-      controllingFloor, controllingFloorIsMdr,
-      pgCovers, relCovers, shortfall, reqBalance,
-      belowPolicyFloor, minAllowedMdr,
-      targetTier, reqBankEntry, revGap,
+      shortfall, reqBalance,
       engine: r,
     };
   }
@@ -756,46 +677,80 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   // state — single global app state + tiny pub/sub
   // ==========================================================================
 
-  const STORAGE_KEY = 'wio-pay-sales-calc-state-v1';
+  const STORAGE_KEY = 'wio-pay-sales-calc-state-v2';
+  const DEFAULT_ECOM_BRACKETS = [1.00, 0.75, 0.50, 0.00];
   const DEFAULTS = Object.freeze({
-    industry: 'retail', risk: 'low', months: 12, tlOverride: false,
+    // shared merchant profile
+    industry: 'retail', risk: 'low',
     balance: 0, xborder: 0, spend: 0, loans: 0, loanTenure: 24,
-    aov: 200, txnCount: 500, debitMix: 0.60,
-    requestedMdrPct: 0.0150, desiredMdrPct: 0.0150,
-    activeTab: 'manual',
+
+    // PG channel
+    pg: {
+      active: true,
+      aov: 200, txnCount: 500, debitMix: 0.60,
+      requestedMdrPct: 0.0150,
+      ecomBrackets: [...DEFAULT_ECOM_BRACKETS],
+    },
+
+    // POS channel
+    pos: {
+      active: false,
+      aov: 80, txnCount: 1500, debitMix: 0.60,
+      requestedMdrPct: 0.0200,
+      numTerminals: 1,
+      chargedPerTerminal: 0,
+      setupFeeMonthly: 0,
+    },
+
+    // UI (not persisted)
+    activeTab: 'manual',         // 'manual' | 'pnl' | 'backend'
+    manualSubTab: 'pg',          // 'pg' | 'pos'
+
+    // approval path (lives in P&L tab now — not persisted)
     manualPath: { balance: 0, spend: 0, fx: 0, loan: 0 },
-    salesPath:  { balance: 0, spend: 0, fx: 0, loan: 0 },
   });
+
+  function freshDefaults() {
+    return {
+      ...DEFAULTS,
+      pg:  { ...DEFAULTS.pg,  ecomBrackets: [...DEFAULT_ECOM_BRACKETS] },
+      pos: { ...DEFAULTS.pos },
+      manualPath: { ...DEFAULTS.manualPath },
+    };
+  }
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return { ...DEFAULTS,
-          manualPath: { ...DEFAULTS.manualPath },
-          salesPath:  { ...DEFAULTS.salesPath } };
-      }
+      if (!raw) return freshDefaults();
       const parsed = JSON.parse(raw);
+      const def = freshDefaults();
+      const ecom = parsed.pg && Array.isArray(parsed.pg.ecomBrackets) && parsed.pg.ecomBrackets.length === 4
+        ? parsed.pg.ecomBrackets.map(v => num(v, 0))
+        : [...DEFAULT_ECOM_BRACKETS];
       return {
-        ...DEFAULTS, ...parsed,
-        manualPath: { ...DEFAULTS.manualPath, ...(parsed.manualPath || {}) },
-        salesPath:  { ...DEFAULTS.salesPath,  ...(parsed.salesPath  || {}) },
+        ...def,
+        ...parsed,
+        pg:  { ...def.pg,  ...(parsed.pg  || {}), ecomBrackets: ecom },
+        pos: { ...def.pos, ...(parsed.pos || {}) },
+        // UI / approval-path fields always start from defaults
+        activeTab: 'manual',
+        manualSubTab: 'pg',
+        manualPath: { ...def.manualPath },
       };
     } catch {
-      return { ...DEFAULTS,
-        manualPath: { ...DEFAULTS.manualPath },
-        salesPath:  { ...DEFAULTS.salesPath } };
+      return freshDefaults();
     }
   }
 
   function saveStateToLs(s) {
     try {
       const persisted = {
-        industry: s.industry, risk: s.risk, months: s.months, tlOverride: s.tlOverride,
+        industry: s.industry, risk: s.risk,
         balance: s.balance, xborder: s.xborder, spend: s.spend,
         loans: s.loans, loanTenure: s.loanTenure,
-        aov: s.aov, txnCount: s.txnCount, debitMix: s.debitMix,
-        requestedMdrPct: s.requestedMdrPct, desiredMdrPct: s.desiredMdrPct,
+        pg:  { ...s.pg },
+        pos: { ...s.pos },
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch { /* ignore */ }
@@ -811,7 +766,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     emitState();
   }
   function setManualPath(key, value) { _state.manualPath[key] = value; emitState(); }
-  function setSalesPath(key, value)  { _state.salesPath[key]  = value; emitState(); }
   function onChange(cb) {
     if (typeof cb === 'function') stateSubscribers.add(cb);
     return () => stateSubscribers.delete(cb);
@@ -824,6 +778,13 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 
   function num(v, fallback) {
     if (fallback === undefined) fallback = 0;
+    // Forgiving parse — strip commas / whitespace / stray chars so paste works.
+    if (typeof v === 'string') {
+      const cleaned = v.replace(/[^\d.\-]/g, '');
+      if (cleaned === '' || cleaned === '-' || cleaned === '.') return fallback;
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : fallback;
+    }
     const n = +v;
     return Number.isFinite(n) ? n : fallback;
   }
@@ -837,33 +798,74 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   const fmtAED = v => (Number.isFinite(v) ? aedFmt.format(Math.round(v)) : '0');
   const fmtPct = v => (Number.isFinite(v) ? (v * 100).toFixed(2) + '%' : '0.00%');
 
-  function buildEngineInput(s) {
+  // Build the engine input shape for one channel (pg | pos) from shared profile
+  // + channel-specific inputs. PG uses defaultCostsPG and ecomBrackets, no
+  // terminal fields. POS uses defaultCostsPOS and terminal fields, no e-com
+  // brackets (so aovFeeAnnual = 0).
+  function buildChannelInput(channel, channelState, sharedState) {
+    const isPos = channel === 'pos';
+    const stack = isPos ? defaultCostsPOS : defaultCostsPG;
+    const cs    = channelState || {};
+    const ecom  = (cs.ecomBrackets || DEFAULT_ECOM_BRACKETS);
     return {
-      industry: s.industry,
-      risk: s.risk,
-      months: clampMin(s.months, 0),
-      tlOverride: !!s.tlOverride,
-      balance: clampMin(s.balance, 0),
-      xborder: clampMin(s.xborder, 0),
-      spend: clampMin(s.spend, 0),
-      loans: clampMin(s.loans, 0),
-      loanTenure: clampMin(s.loanTenure, 0),
-      aov: clampMin(s.aov, 1),
-      txnCount: clampMin(s.txnCount, 0),
-      debitMix: Math.min(1, Math.max(0, num(s.debitMix, defaultCosts.debitMix))),
-      pineLabs: defaultCosts.pineLabs,
-      fixedCost: defaultCosts.fixedCost,
-      netMdrFloor: defaultFloors.netMdrFloorBps,
-      minRev: defaultFloors.minMonthlyRev,
+      mode: channel,
+      industry: sharedState.industry,
+      risk: sharedState.risk,
+      balance: clampMin(sharedState.balance, 0),
+      xborder: clampMin(sharedState.xborder, 0),
+      spend: clampMin(sharedState.spend, 0),
+      loans: clampMin(sharedState.loans, 0),
+      loanTenure: clampMin(sharedState.loanTenure, 0),
+      aov: clampMin(cs.aov, 1),
+      txnCount: clampMin(cs.txnCount, 0),
+      debitMix: Math.min(1, Math.max(0, num(cs.debitMix, stack.debitMix))),
+      pineLabs: stack.pineLabs,
+      fixedCost: stack.fixedCost,
+      // POS-only — zero for PG so they're ignored by the engine.
+      deviceCost:        isPos ? stack.deviceCost     : 0,
+      terminalMgmt:      isPos ? stack.terminalMgmt   : 0,
+      paperRollPer60:    isPos ? stack.paperRollPer60 : 0,
+      numTerminals:      isPos ? clampMin(cs.numTerminals, 0)       : 0,
+      chargedPerTerminal:isPos ? clampMin(cs.chargedPerTerminal, 0) : 0,
+      setupFeeMonthly:   isPos ? clampMin(cs.setupFeeMonthly, 0)    : 0,
       rBal:  defaultYields.rBal,
       rXb:   defaultYields.rXb,
       rDeb:  defaultYields.rDeb,
       rLoan: defaultYields.rLoan,
-      b1: CMC_FEE_DEFAULTS[0],
-      b2: CMC_FEE_DEFAULTS[1],
-      b3: CMC_FEE_DEFAULTS[2],
-      b4: CMC_FEE_DEFAULTS[3],
+      // POS doesn't levy e-com per-txn fees — zero out brackets so aovFeeAnnual = 0.
+      b1: isPos ? 0 : clampMin(ecom[0], 0),
+      b2: isPos ? 0 : clampMin(ecom[1], 0),
+      b3: isPos ? 0 : clampMin(ecom[2], 0),
+      b4: isPos ? 0 : clampMin(ecom[3], 0),
     };
+  }
+
+  // Run one channel through the pricing engine. Returns the channel's
+  // pgRev / pgCostAnnual / pgOnlyNet (channel net = pgRev - pgCostAnnual,
+  // banking is OUT) plus the raw engine output for waterfall rendering.
+  function runChannel(channel, channelState, sharedState) {
+    const inp = buildChannelInput(channel, channelState, sharedState);
+    const r   = runPricingEngine(inp);
+    const reqMdrPct = num(channelState.requestedMdrPct, 0);
+    const pgRev     = reqMdrPct * r.pgYearVol + r.aovFeeAnnual + r.posExtraRevenueAnnual;
+    const pgOnlyNet = pgRev - r.pgCostAnnual;
+    return {
+      inp,
+      engine: r,
+      requestedMdrPct: reqMdrPct,
+      pgCostPct:    r.pgCostPct,
+      pgYearVol:    r.pgYearVol,
+      pgRev,
+      pgCostAnnual: r.pgCostAnnual,
+      pgOnlyNet,
+    };
+  }
+
+  // Banking revenue depends only on the shared profile (balance / xborder /
+  // spend / loans / tenure / yields). Compute it once independent of channel.
+  function computeBankingRev(sharedState) {
+    const inp = buildChannelInput('pg', sharedState.pg, sharedState);
+    return runPricingEngine(inp).bankingRev;
   }
 
   const app = document.getElementById('app');
@@ -871,7 +873,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   function mountShell() {
     app.innerHTML = `
       <section class="panel" id="panel-manual"></section>
-      <section class="panel" id="panel-sales"></section>
+      <section class="panel" id="panel-pnl"></section>
       <section class="panel" id="panel-backend"></section>
     `;
     document.querySelectorAll('.tab').forEach(btn => {
@@ -893,6 +895,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     if (active) active.classList.add('is-active');
   }
 
+  // Shared Sales Context — merchant profile only. Channel-specific inputs
+  // live inside each sub-tab.
   function salesContextHTML(s) {
     const industryOpts = Object.entries(industryInterchange)
       .map(([k, v]) => `<option value="${k}" ${k === s.industry ? 'selected' : ''}>${v.label}</option>`)
@@ -900,84 +904,50 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     return `
       <div class="card">
         <h2 class="card__title">Sales Context</h2>
-        <p class="card__subtitle">Merchant profile — shared across Manual + Sales calculators.</p>
+        <p class="card__subtitle">Merchant profile — drives banking revenue &amp; risk for both channels.</p>
 
-        <div class="field">
-          <label class="field__label" for="f-industry">Industry (MCC)</label>
-          <select class="select" id="f-industry">${industryOpts}</select>
-        </div>
-
-        <div class="field">
-          <label class="field__label" for="f-months">Business Vintage</label>
-          <select class="select" id="f-months">
-            <option value="3"  ${s.months === 3  ? 'selected' : ''}>0 – 6 months</option>
-            <option value="9"  ${s.months === 9  ? 'selected' : ''}>6 – 12 months</option>
-            <option value="15" ${s.months === 15 ? 'selected' : ''}>12 – 18 months</option>
-            <option value="21" ${s.months === 21 ? 'selected' : ''}>18 – 24 months</option>
-            <option value="30" ${s.months === 30 ? 'selected' : ''}>24+ months</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label class="field__label">UAE Trade License</label>
-          <div class="chips">
-            <button class="chip ${!s.tlOverride ? 'is-active' : ''}" data-tl="0">Under 3 years</button>
-            <button class="chip ${ s.tlOverride ? 'is-active' : ''}" data-tl="1">3 years or more</button>
-          </div>
-          <div class="field__hint">3y+ waives the vintage floor.</div>
-        </div>
-
-        <div class="field">
-          <label class="field__label">Risk Rating</label>
-          <div class="chips">
-            <button class="chip ${s.risk === 'low'  ? 'is-active' : ''}" data-risk="low">Low</button>
-            <button class="chip ${s.risk === 'med'  ? 'is-active' : ''}" data-risk="med">Medium +0.20%</button>
-            <button class="chip ${s.risk === 'high' ? 'is-active' : ''}" data-risk="high">High +0.40%</button>
-          </div>
-        </div>
+        <div class="subsection">Profile</div>
 
         <div class="row-2">
           <div class="field">
-            <label class="field__label" for="f-aov">AOV (AED)</label>
-            <input class="input mono" id="f-aov" type="number" min="1" step="1" value="${s.aov}" />
+            <label class="field__label" for="f-industry">Industry (MCC)</label>
+            <select class="select" id="f-industry">${industryOpts}</select>
           </div>
           <div class="field">
-            <label class="field__label" for="f-txn">Monthly Transactions</label>
-            <input class="input mono" id="f-txn" type="number" min="0" step="1" value="${s.txnCount}" />
+            <label class="field__label">Risk Rating</label>
+            <div class="chips">
+              <button class="chip ${s.risk === 'low'  ? 'is-active' : ''}" data-risk="low">Low</button>
+              <button class="chip ${s.risk === 'med'  ? 'is-active' : ''}" data-risk="med">Med +0.20%</button>
+              <button class="chip ${s.risk === 'high' ? 'is-active' : ''}" data-risk="high">High +0.40%</button>
+            </div>
           </div>
-        </div>
-        <div class="field__hint" id="tpv-hint">Monthly TPV: AED ${fmtAED(s.aov * s.txnCount)}</div>
-
-        <div class="field" style="margin-top:14px;">
-          <label class="field__label">Debit / Credit Mix (Debit ${(s.debitMix * 100).toFixed(0)}%)</label>
-          <input class="slider" id="f-debitMix" type="range" min="0" max="100" step="1" value="${Math.round(s.debitMix * 100)}" />
         </div>
 
-        <div class="row-2">
-          <div class="field">
-            <label class="field__label" for="f-balance">Avg Balance (AED)</label>
-            <input class="input mono" id="f-balance" type="number" min="0" step="1000" value="${s.balance}" />
-          </div>
-          <div class="field">
-            <label class="field__label" for="f-xborder">Cross-Border Vol / yr</label>
-            <input class="input mono" id="f-xborder" type="number" min="0" step="1000" value="${s.xborder}" />
-          </div>
-        </div>
+        <div class="subsection">Banking Footprint</div>
 
         <div class="row-2">
           <div class="field">
-            <label class="field__label" for="f-spend">Card Spend / yr</label>
-            <input class="input mono" id="f-spend" type="number" min="0" step="1000" value="${s.spend}" />
+            <label class="field__label" for="f-balance">Avg Balance (AED · stock)</label>
+            <input class="input mono" id="f-balance" type="text" inputmode="numeric" value="${s.balance}" />
           </div>
           <div class="field">
-            <label class="field__label" for="f-loans">Loan Amount (AED)</label>
-            <input class="input mono" id="f-loans" type="number" min="0" step="1000" value="${s.loans}" />
+            <label class="field__label" for="f-xborder">Cross-Border Vol (AED · annual)</label>
+            <input class="input mono" id="f-xborder" type="text" inputmode="numeric" value="${s.xborder}" />
           </div>
         </div>
-
+        <div class="row-2">
+          <div class="field">
+            <label class="field__label" for="f-spend">Card Spend (AED · annual)</label>
+            <input class="input mono" id="f-spend" type="text" inputmode="numeric" value="${s.spend}" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="f-loans">Loan Amount (AED · stock)</label>
+            <input class="input mono" id="f-loans" type="text" inputmode="numeric" value="${s.loans}" />
+          </div>
+        </div>
         <div class="field">
           <label class="field__label" for="f-loanTenure">Loan Tenure (months)</label>
-          <input class="input mono" id="f-loanTenure" type="number" min="0" step="1" value="${s.loanTenure}" />
+          <input class="input mono" id="f-loanTenure" type="text" inputmode="numeric" value="${s.loanTenure}" />
         </div>
       </div>
     `;
@@ -985,14 +955,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 
   function wireSalesContext(root) {
     root.querySelector('#f-industry').addEventListener('change', e => setState({ industry: e.target.value }));
-    root.querySelector('#f-months').addEventListener('change',   e => setState({ months: num(e.target.value, 12) }));
-    root.querySelectorAll('[data-tl]').forEach(c =>
-      c.addEventListener('click', () => setState({ tlOverride: c.dataset.tl === '1' })));
     root.querySelectorAll('[data-risk]').forEach(c =>
       c.addEventListener('click', () => setState({ risk: c.dataset.risk })));
-    root.querySelector('#f-aov').addEventListener('input',     e => setState({ aov: clampMin(e.target.value, 1) }));
-    root.querySelector('#f-txn').addEventListener('input',     e => setState({ txnCount: clampMin(e.target.value, 0) }));
-    root.querySelector('#f-debitMix').addEventListener('input', e => setState({ debitMix: num(e.target.value, 60) / 100 }));
     root.querySelector('#f-balance').addEventListener('input', e => setState({ balance: clampMin(e.target.value, 0) }));
     root.querySelector('#f-xborder').addEventListener('input', e => setState({ xborder: clampMin(e.target.value, 0) }));
     root.querySelector('#f-spend').addEventListener('input',   e => setState({ spend: clampMin(e.target.value, 0) }));
@@ -1000,20 +964,28 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     root.querySelector('#f-loanTenure').addEventListener('input', e => setState({ loanTenure: clampMin(e.target.value, 0) }));
   }
 
+  // Helper — update a channel-specific field. `channel` = 'pg' | 'pos'.
+  function setChannelField(channel, patch) {
+    const cur = getState();
+    setState({ [channel]: { ...cur[channel], ...patch } });
+  }
+  function setChannelBracket(i, v) {
+    const cur = getState().pg;
+    const next = [...(cur.ecomBrackets || DEFAULT_ECOM_BRACKETS)];
+    next[i] = clampMin(v, 0);
+    setChannelField('pg', { ecomBrackets: next });
+  }
+
+  // Total-relationship pitch text (lives on the P&L tab now).
   function pitchText(v) {
-    const tier = v.targetTier ? v.targetTier.name : 'Base';
     switch (v.status) {
       case 'pos':
-        return `PG economics alone clear the floor at this rate — the merchant maps cleanly to the ${tier} tier. Lock the offer.`;
+        return `Channel economics are positive on their own at this configuration — total channel net AED ${fmtAED(v.channelNet)} (annual) · AED ${fmtAED(v.channelNet / 12)} (monthly) after costs, before banking. Lock the offer.`;
       case 'warn':
-        return `PG economics fall short on their own, but the wider banking relationship covers the floor. Position this as a relationship deal and reinforce the cross-product hooks (NIM, FX, spend, loan).`;
+        return `Channel economics are negative on their own, but banking revenue (AED ${fmtAED(v.bankingRev)} annual) pulls total net positive (AED ${fmtAED(v.totalRelNet)} annual · AED ${fmtAED(v.totalRelNet / 12)} monthly). Position this as a relationship deal and reinforce the cross-product hooks (NIM, FX, spend, loan).`;
       case 'cond':
-        return `The rate is conditionally viable — close the gap with one of the approval paths below. The build-your-own block lets you blend AED across drivers without re-pricing.`;
-      case 'neg':
       default:
-        return v.belowPolicyFloor
-          ? `The requested MDR is below the policy floor for this MCC + vintage + risk profile. Escalate as a manual exception, or revise the rate up to ${fmtPct(v.minAllowedMdr)}.`
-          : `Floor not met on any standard route. Recommend repositioning the offer or escalating for manual review.`;
+        return `Total relationship net is AED ${fmtAED(v.totalRelNet)} annual (AED ${fmtAED(v.totalRelNet / 12)} monthly) — short AED ${fmtAED(v.shortfall)} annual to break even. Close it with one of the approval paths below; the build-your-own block lets you blend AED across drivers.`;
     }
   }
 
@@ -1024,10 +996,10 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     const tmp = {};
     initApprovalPath(tmp, shortfall, inp);
     const cards = [
-      { key: 'balance', name: 'Grow Balance',       unit: 'Required avg balance', rate: inp.rBal, hint: `NIM ${fmtPct(inp.rBal)}` },
-      { key: 'fx',      name: 'Increase FX',        unit: 'Required FX volume / yr', rate: inp.rXb,  hint: `Take ${fmtPct(inp.rXb)}` },
-      { key: 'spend',   name: 'Increase Card Spend',unit: 'Required spend / yr',  rate: inp.rDeb, hint: `Interchange ${fmtPct(inp.rDeb)}` },
-      { key: 'loan',    name: 'Take Business Loan', unit: 'Required principal',   rate: inp.rLoan,hint: `Rate ${fmtPct(inp.rLoan)} · ${inp.loanTenure}mo` },
+      { key: 'balance', name: 'Grow Balance',       unit: 'Required avg balance (stock)',     rate: inp.rBal, hint: `NIM ${fmtPct(inp.rBal)} (annual)` },
+      { key: 'fx',      name: 'Increase FX',        unit: 'Required FX volume (annual)',      rate: inp.rXb,  hint: `Take ${fmtPct(inp.rXb)} (annual)` },
+      { key: 'spend',   name: 'Increase Card Spend',unit: 'Required card spend (annual)',     rate: inp.rDeb, hint: `Interchange ${fmtPct(inp.rDeb)} (annual)` },
+      { key: 'loan',    name: 'Take Business Loan', unit: 'Required loan principal (stock)',  rate: inp.rLoan,hint: `Rate ${fmtPct(inp.rLoan)} (annual) · ${inp.loanTenure}mo tenure` },
     ];
     return `
       <div class="paths">
@@ -1048,13 +1020,13 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     return `
       <div class="section-label">Loan tenure matrix</div>
       <table class="loan-matrix">
-        <thead><tr><th>Tenure</th><th>Required principal</th><th>EMI</th></tr></thead>
+        <thead><tr><th>Tenure</th><th>Required principal (stock)</th><th>EMI (monthly)</th></tr></thead>
         <tbody>
           ${rows.map(r => `
             <tr class="${r.months === inp.loanTenure ? 'is-active' : ''}">
               <td>${r.months} months</td>
               <td>AED ${fmtAED(r.principal)}</td>
-              <td>AED ${fmtAED(r.emi)}</td>
+              <td>AED ${fmtAED(r.emi)} / mo</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1064,18 +1036,18 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 
   function byoHTML(pathState, shortfall, inp, idPrefix) {
     const meta = [
-      { key: 'balance', label: 'Balance (AED)',        rate: inp.rBal },
-      { key: 'spend',   label: 'Card Spend (AED)',     rate: inp.rDeb },
-      { key: 'fx',      label: 'Cross-Border (AED)',   rate: inp.rXb },
-      { key: 'loan',    label: 'Loan Principal (AED)', rate: inp.rLoan },
+      { key: 'balance', label: 'Avg Balance (AED · stock)',           rate: inp.rBal },
+      { key: 'spend',   label: 'Card Spend (AED · annual)',            rate: inp.rDeb },
+      { key: 'fx',      label: 'Cross-Border Volume (AED · annual)',   rate: inp.rXb },
+      { key: 'loan',    label: 'Loan Principal (AED · stock)',         rate: inp.rLoan },
     ];
     return `
       <div class="byo-grid">
         ${meta.map(m => `
           <div class="byo">
             <label class="byo__label" for="${idPrefix}-${m.key}">${m.label}</label>
-            <input class="input mono" id="${idPrefix}-${m.key}" type="number" min="0" step="1000" value="${Math.round(pathState[m.key] || 0)}" />
-            <div class="byo__rev" data-byo-rev="${m.key}">Revenue: AED ${fmtAED(pathRevenue(m.key, pathState[m.key] || 0, inp))}</div>
+            <input class="input mono" id="${idPrefix}-${m.key}" type="text" inputmode="numeric" value="${Math.round(pathState[m.key] || 0)}" />
+            <div class="byo__rev" data-byo-rev="${m.key}">Revenue (annual): AED ${fmtAED(pathRevenue(m.key, pathState[m.key] || 0, inp))}</div>
           </div>
         `).join('')}
       </div>
@@ -1103,217 +1075,390 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     if (!el) return;
     el.className = 'byo-status ' + (ok ? 'is-ok' : 'is-bad');
     el.innerHTML = shortfall <= 0
-      ? `No revenue gap to close — current relationship already covers the floor.`
-      : `Blended revenue <strong>AED ${fmtAED(total)}</strong> vs shortfall <strong>AED ${fmtAED(shortfall)}</strong> — ${ok ? 'shortfall covered' : `still short AED ${fmtAED(Math.max(0, shortfall - total))}`}.`;
+      ? `No revenue gap to close — current relationship already breaks even.`
+      : `Blended revenue (annual) <strong>AED ${fmtAED(total)}</strong> vs shortfall (annual) <strong>AED ${fmtAED(shortfall)}</strong> — ${ok ? 'shortfall covered' : `still short AED ${fmtAED(Math.max(0, shortfall - total))} annual`}.`;
+  }
+
+  // Channel-specific inputs card HTML (PG or POS).
+  function channelInputsHTML(channel, cs) {
+    const isPos = channel === 'pos';
+    const aovTpv = cs.aov * cs.txnCount;
+    const baseInputs = `
+      <div class="channel-toggle">
+        <span class="channel-toggle__label">Active for this merchant</span>
+        <div class="chips">
+          <button class="chip ${cs.active ? 'is-active' : ''}" data-channel-active="${channel}" data-active="on">On</button>
+          <button class="chip ${!cs.active ? 'is-active' : ''}" data-channel-active="${channel}" data-active="off">Off</button>
+        </div>
+      </div>
+
+      <div class="subsection">Transaction Volume</div>
+      <div class="row-2">
+        <div class="field">
+          <label class="field__label" for="f-${channel}-aov">AOV (AED · per txn)</label>
+          <input class="input mono" id="f-${channel}-aov" type="text" inputmode="numeric" value="${cs.aov}" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-${channel}-txn">Transactions (monthly)</label>
+          <input class="input mono" id="f-${channel}-txn" type="text" inputmode="numeric" value="${cs.txnCount}" />
+        </div>
+      </div>
+      <div class="field__hint">Monthly TPV AED ${fmtAED(aovTpv)} · Annual TPV AED ${fmtAED(aovTpv * 12)}</div>
+
+      <div class="field" style="margin-top:10px;">
+        <label class="field__label">Debit / Credit Mix · Debit ${(cs.debitMix * 100).toFixed(0)}%</label>
+        <input class="slider" id="f-${channel}-debitMix" type="range" min="0" max="100" step="1" value="${Math.round(cs.debitMix * 100)}" />
+      </div>
+
+      <div class="field" style="margin-top:10px;">
+        <label class="field__label" for="f-${channel}-reqMdr">Requested MDR %</label>
+        <input class="input input--lg mono" id="f-${channel}-reqMdr" type="text" inputmode="decimal" value="${(cs.requestedMdrPct * 100).toFixed(2)}" />
+      </div>
+    `;
+
+    const pgExtras = `
+      <div class="subsection">E-com Per-Txn Fee (AED)</div>
+      <div class="row-2">
+        <div class="field">
+          <label class="field__label" for="f-pg-b1">AOV 0 – 200</label>
+          <input class="input mono" id="f-pg-b1" type="text" inputmode="decimal" value="${(cs.ecomBrackets || DEFAULT_ECOM_BRACKETS)[0]}" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-pg-b2">AOV 200 – 500</label>
+          <input class="input mono" id="f-pg-b2" type="text" inputmode="decimal" value="${(cs.ecomBrackets || DEFAULT_ECOM_BRACKETS)[1]}" />
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label class="field__label" for="f-pg-b3">AOV 500 – 1,000</label>
+          <input class="input mono" id="f-pg-b3" type="text" inputmode="decimal" value="${(cs.ecomBrackets || DEFAULT_ECOM_BRACKETS)[2]}" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-pg-b4">AOV 1,000+</label>
+          <input class="input mono" id="f-pg-b4" type="text" inputmode="decimal" value="${(cs.ecomBrackets || DEFAULT_ECOM_BRACKETS)[3]}" />
+        </div>
+      </div>
+    `;
+
+    const posExtras = `
+      <div class="subsection" style="color:var(--brand-primary);border-top-color:var(--brand-primary);">POS Configuration</div>
+      <div class="row-2">
+        <div class="field">
+          <label class="field__label" for="f-pos-numTerminals">Number of Terminals</label>
+          <input class="input mono" id="f-pos-numTerminals" type="text" inputmode="numeric" value="${cs.numTerminals}" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-pos-chargedPerTerminal">Terminal Charge (AED · one-time/annual)</label>
+          <input class="input mono" id="f-pos-chargedPerTerminal" type="text" inputmode="numeric" value="${cs.chargedPerTerminal}" />
+        </div>
+      </div>
+      <div class="field__hint">Wio procurement AED ${fmtAED(defaultCostsPOS.deviceCost)} per terminal. Charge offsets it; excess becomes revenue.</div>
+      <div class="field" style="margin-top:8px;">
+        <label class="field__label" for="f-pos-setupFeeMonthly">Monthly Setup Fee (AED)</label>
+        <input class="input mono" id="f-pos-setupFeeMonthly" type="text" inputmode="numeric" value="${cs.setupFeeMonthly}" />
+      </div>
+    `;
+
+    return baseInputs + (isPos ? posExtras : pgExtras);
+  }
+
+  // Channel verdict — per-channel status, isolated (banking excluded).
+  function channelVerdict(ch) {
+    // Status driven by channel-only net (no banking).
+    if (!ch.requestedMdrPct && ch.pgYearVol === 0) {
+      return { status: 'cond', statusLabel: 'Configure channel inputs' };
+    }
+    if (ch.pgOnlyNet >= 0) return { status: 'pos', statusLabel: 'Channel economics positive' };
+    return { status: 'cond', statusLabel: 'Channel economics negative — relies on banking / approval' };
+  }
+
+  function channelWaterfallHTML(channel, ch) {
+    const isPos = channel === 'pos';
+    const e = ch.engine;
+    return `
+      <div class="waterfall">
+        <div class="waterfall__row"><span class="waterfall__label">MDR revenue</span><span class="waterfall__value">AED ${fmtAED(ch.requestedMdrPct * ch.pgYearVol)}</span></div>
+        ${!isPos ? `<div class="waterfall__row"><span class="waterfall__label">+ E-com per-txn fee total</span><span class="waterfall__value">AED ${fmtAED(e.aovFeeAnnual)}</span></div>` : ''}
+        ${isPos && e.excessTerminalRevAnnual > 0 ? `<div class="waterfall__row"><span class="waterfall__label">+ Excess terminal revenue (charge AED ${fmtAED(ch.inp.chargedPerTerminal)} − cost AED ${fmtAED(defaultCostsPOS.deviceCost)}) × ${ch.inp.numTerminals}</span><span class="waterfall__value">AED ${fmtAED(e.excessTerminalRevAnnual)}</span></div>` : ''}
+        ${isPos && e.setupFeeAnnual > 0 ? `<div class="waterfall__row"><span class="waterfall__label">+ Setup fee revenue (AED ${fmtAED(ch.inp.setupFeeMonthly)}/mo × 12)</span><span class="waterfall__value">AED ${fmtAED(e.setupFeeAnnual)}</span></div>` : ''}
+        <div class="waterfall__row"><span class="waterfall__label">− Variable ${isPos ? 'POS' : 'PG'} cost</span><span class="waterfall__value neg">AED ${fmtAED(e.variableCostAnnual)}</span></div>
+        ${isPos ? `
+          <div class="waterfall__row" style="background:var(--midnight-10);padding-left:8px;border-radius:6px;"><span class="waterfall__label" style="font-weight:600;">− POS Other Cost</span><span class="waterfall__value neg">AED ${fmtAED(e.posOtherCostAnnual)}</span></div>
+          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Net terminal procurement (gross AED ${fmtAED(e.grossTerminalProcAnnual)} − terminal charge AED ${fmtAED(e.grossTerminalRevAnnual)})</span><span class="waterfall__value neg">AED ${fmtAED(e.netTerminalProcAnnual)}</span></div>
+          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Terminal mgmt (${ch.inp.numTerminals} × AED ${fmtAED(defaultCostsPOS.terminalMgmt)}/mo × 12)</span><span class="waterfall__value neg">AED ${fmtAED(e.terminalMgmtAnnual)}</span></div>
+          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Paper roll (AED ${defaultCostsPOS.paperRollPer60.toFixed(2)} / 60 txns × ${fmtAED(e.txnsYear)} txns)</span><span class="waterfall__value neg">AED ${fmtAED(e.paperRollAnnual)}</span></div>
+        ` : ''}
+        <div class="waterfall__row"><span class="waterfall__label">${isPos ? 'POS' : 'PG'}-only net</span><span class="waterfall__value ${ch.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(ch.pgOnlyNet)} <span style="font-weight:400;color:var(--fg-mild);font-size:12px;">· AED ${fmtAED(ch.pgOnlyNet / 12)} / mo</span></span></div>
+      </div>
+    `;
+  }
+
+  function channelSubPanelHTML(channel, cs, s) {
+    const ch = runChannel(channel, cs, s);
+    const verdict = channelVerdict(ch);
+    const modeLabel = channel === 'pos' ? 'POS' : 'PG';
+    return `
+      <div class="card">
+        <h2 class="card__title">${modeLabel} — ${channel === 'pos' ? 'Point of Sale' : 'Payment Gateway / E-commerce'}</h2>
+        <p class="card__subtitle">Channel-isolated economics. Banking revenue rolls up in the P&amp;L tab.</p>
+        ${channelInputsHTML(channel, cs)}
+      </div>
+
+      <div class="card">
+        <div class="verdict verdict--${verdict.status}">
+          <span class="verdict__dot"></span>
+          <div>
+            <div class="verdict__label">${verdict.statusLabel}</div>
+            <div class="verdict__detail">${modeLabel}-only net: AED ${fmtAED(ch.pgOnlyNet)} (annual) · AED ${fmtAED(ch.pgOnlyNet / 12)} (monthly)</div>
+          </div>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi"><div class="kpi__label">${modeLabel} Cost %</div><div class="kpi__value">${fmtPct(ch.pgCostPct)}</div><div class="kpi__hint">% rate · payment processing only</div></div>
+          <div class="kpi"><div class="kpi__label">${modeLabel} Revenue</div><div class="kpi__value">AED ${fmtAED(ch.pgRev)}</div><div class="kpi__hint">annual · AED ${fmtAED(ch.pgRev / 12)} / mo</div></div>
+          <div class="kpi"><div class="kpi__label">${modeLabel} Cost</div><div class="kpi__value">AED ${fmtAED(ch.pgCostAnnual)}</div><div class="kpi__hint">annual · AED ${fmtAED(ch.pgCostAnnual / 12)} / mo</div></div>
+          <div class="kpi"><div class="kpi__label">${modeLabel} Channel Net</div><div class="kpi__value ${ch.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(ch.pgOnlyNet)}</div><div class="kpi__hint">annual · AED ${fmtAED(ch.pgOnlyNet / 12)} / mo</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card__title">${modeLabel} Waterfall <span style="font-weight:400;font-size:12px;color:var(--fg-mild);">· annual values</span></h3>
+        ${channelWaterfallHTML(channel, ch)}
+      </div>
+    `;
   }
 
   function renderManualPanel() {
     const s = getState();
-    const inp = buildEngineInput(s);
-    const v = runManualCalculator(inp, num(s.requestedMdrPct, 0));
     const panel = document.getElementById('panel-manual');
+    const subTab = s.manualSubTab || 'pg';
 
+    panel.innerHTML = `
+      <div class="split">
+        <div>${salesContextHTML(s)}</div>
+        <div>
+          <nav class="subtabs" role="tablist" aria-label="Channel">
+            <button class="subtab ${subTab === 'pg'  ? 'is-active' : ''}" role="tab" data-subtab="pg"  aria-selected="${subTab === 'pg'}">PG / E-com</button>
+            <button class="subtab ${subTab === 'pos' ? 'is-active' : ''}" role="tab" data-subtab="pos" aria-selected="${subTab === 'pos'}">POS</button>
+          </nav>
+          <div class="subpanel ${subTab === 'pg'  ? 'is-active' : ''}" id="subpanel-pg">${channelSubPanelHTML('pg',  s.pg,  s)}</div>
+          <div class="subpanel ${subTab === 'pos' ? 'is-active' : ''}" id="subpanel-pos">${channelSubPanelHTML('pos', s.pos, s)}</div>
+        </div>
+      </div>
+    `;
+
+    wireSalesContext(panel);
+
+    // Sub-tab switching
+    panel.querySelectorAll('[data-subtab]').forEach(btn => {
+      btn.addEventListener('click', () => setState({ manualSubTab: btn.dataset.subtab }));
+    });
+
+    // Per-channel input wiring (both subpanels exist in DOM — wire both).
+    ['pg', 'pos'].forEach(channel => {
+      const root = panel.querySelector(`#subpanel-${channel}`);
+      if (!root) return;
+      root.querySelectorAll(`[data-channel-active="${channel}"]`).forEach(btn => {
+        btn.addEventListener('click', () => setChannelField(channel, { active: btn.dataset.active === 'on' }));
+      });
+      const aovEl = root.querySelector(`#f-${channel}-aov`);
+      if (aovEl) aovEl.addEventListener('input', e => setChannelField(channel, { aov: clampMin(e.target.value, 1) }));
+      const txnEl = root.querySelector(`#f-${channel}-txn`);
+      if (txnEl) txnEl.addEventListener('input', e => setChannelField(channel, { txnCount: clampMin(e.target.value, 0) }));
+      const mixEl = root.querySelector(`#f-${channel}-debitMix`);
+      if (mixEl) mixEl.addEventListener('input', e => setChannelField(channel, { debitMix: num(e.target.value, 60) / 100 }));
+      const mdrEl = root.querySelector(`#f-${channel}-reqMdr`);
+      if (mdrEl) mdrEl.addEventListener('input', e => setChannelField(channel, { requestedMdrPct: clampMin(e.target.value, 0) / 100 }));
+
+      if (channel === 'pg') {
+        root.querySelector('#f-pg-b1').addEventListener('input', e => setChannelBracket(0, e.target.value));
+        root.querySelector('#f-pg-b2').addEventListener('input', e => setChannelBracket(1, e.target.value));
+        root.querySelector('#f-pg-b3').addEventListener('input', e => setChannelBracket(2, e.target.value));
+        root.querySelector('#f-pg-b4').addEventListener('input', e => setChannelBracket(3, e.target.value));
+      } else {
+        const ntEl = root.querySelector('#f-pos-numTerminals');
+        if (ntEl) ntEl.addEventListener('input', e => setChannelField('pos', { numTerminals: clampMin(e.target.value, 0) }));
+        const cptEl = root.querySelector('#f-pos-chargedPerTerminal');
+        if (cptEl) cptEl.addEventListener('input', e => setChannelField('pos', { chargedPerTerminal: clampMin(e.target.value, 0) }));
+        const sfmEl = root.querySelector('#f-pos-setupFeeMonthly');
+        if (sfmEl) sfmEl.addEventListener('input', e => setChannelField('pos', { setupFeeMonthly: clampMin(e.target.value, 0) }));
+      }
+    });
+  }
+
+  // ==========================================================================
+  // P&L tab — 3-column summary (PG · POS · Total) + approval paths
+  // ==========================================================================
+
+  // Roll up the relationship: per-channel revenue/cost/net, banking, total.
+  function computePnl(s) {
+    const pgActive  = !!s.pg.active;
+    const posActive = !!s.pos.active;
+    const pgCh  = runChannel('pg',  s.pg,  s);
+    const posCh = runChannel('pos', s.pos, s);
+
+    const pgRev    = pgActive  ? pgCh.pgRev        : 0;
+    const pgCost   = pgActive  ? pgCh.pgCostAnnual : 0;
+    const pgNet    = pgRev - pgCost;
+
+    const posRev   = posActive ? posCh.pgRev        : 0;
+    const posCost  = posActive ? posCh.pgCostAnnual : 0;
+    const posNet   = posRev - posCost;
+
+    const totalRev  = pgRev  + posRev;
+    const totalCost = pgCost + posCost;
+    const channelNet = totalRev - totalCost;
+
+    const bankingRev   = computeBankingRev(s);
+    const totalRelNet  = channelNet + bankingRev;
+    const shortfall    = Math.max(0, -totalRelNet);
+
+    // Total-relationship status
+    let status, statusLabel;
+    if (channelNet >= 0) {
+      status = 'pos';
+      statusLabel = 'Covered by Channel Economics';
+    } else if (totalRelNet >= 0) {
+      status = 'warn';
+      statusLabel = 'Covered by Banking Relationship';
+    } else {
+      status = 'cond';
+      statusLabel = 'Additional Relationship Required';
+    }
+
+    return {
+      pgActive, posActive,
+      pgRev, pgCost, pgNet,
+      posRev, posCost, posNet,
+      totalRev, totalCost, channelNet,
+      bankingRev, totalRelNet, shortfall,
+      status, statusLabel,
+    };
+  }
+
+  // P&L approval-path engine input — uses shared profile, NIM/FX/spend/loan
+  // yields (no channel dependency). We reuse buildChannelInput for shape.
+  function pnlApprovalInp(s) {
+    return buildChannelInput('pg', s.pg, s);
+  }
+
+  function renderPnlPanel() {
+    const s = getState();
+    const panel = document.getElementById('panel-pnl');
+    const pnl = computePnl(s);
+    const inp = pnlApprovalInp(s);
+
+    // Auto-init BYO when a fresh gap appears.
     const pathEmpty = ['balance', 'spend', 'fx', 'loan'].every(k => !s.manualPath[k]);
-    if (v.shortfall > 0 && pathEmpty) {
+    if (pnl.shortfall > 0 && pathEmpty) {
       const tmp = {};
-      initApprovalPath(tmp, v.shortfall, inp);
+      initApprovalPath(tmp, pnl.shortfall, inp);
       Object.entries(tmp).forEach(([k, val]) => setManualPath(k, val));
     }
 
+    const renderCell = (active, val) => active
+      ? `AED ${fmtAED(val)}`
+      : `<span class="pnl-col-inactive">AED 0</span>`;
+
+    const verdictForPitch = {
+      status: pnl.status,
+      channelNet: pnl.channelNet,
+      bankingRev: pnl.bankingRev,
+      totalRelNet: pnl.totalRelNet,
+      shortfall: pnl.shortfall,
+    };
+
     panel.innerHTML = `
-      <div class="split">
-        <div>${salesContextHTML(s)}</div>
-        <div>
-          <div class="card">
-            <h2 class="card__title">Manual Calculator</h2>
-            <p class="card__subtitle">Enter a requested MDR — see whether the relationship economics can support it.</p>
+      <div class="card">
+        <h2 class="card__title">Relationship P&amp;L</h2>
+        <p class="card__subtitle">Per-channel and total roll-up. Inactive channels read AED 0.</p>
 
-            <div class="field">
-              <label class="field__label" for="f-reqMdr">Requested MDR %</label>
-              <input class="input input--lg mono" id="f-reqMdr" type="number" min="0" step="0.01" value="${(s.requestedMdrPct * 100).toFixed(2)}" />
-              <div class="field__hint">Vintage floor for this profile: ${fmtPct(v.minAllowedMdr)}</div>
-            </div>
+        <table class="pnl-table">
+          <thead>
+            <tr><th>Line item</th><th>PG / E-com</th><th>POS</th><th>Total</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Revenue (annual)</td>
+              <td>${renderCell(pnl.pgActive,  pnl.pgRev)}</td>
+              <td>${renderCell(pnl.posActive, pnl.posRev)}</td>
+              <td>AED ${fmtAED(pnl.totalRev)}</td>
+            </tr>
+            <tr>
+              <td>Cost (annual)</td>
+              <td class="neg">${pnl.pgActive  ? `−AED ${fmtAED(pnl.pgCost)}`  : `<span class="pnl-col-inactive">AED 0</span>`}</td>
+              <td class="neg">${pnl.posActive ? `−AED ${fmtAED(pnl.posCost)}` : `<span class="pnl-col-inactive">AED 0</span>`}</td>
+              <td class="neg">−AED ${fmtAED(pnl.totalCost)}</td>
+            </tr>
+            <tr class="pnl-total">
+              <td>Channel P&amp;L</td>
+              <td class="${pnl.pgActive  && pnl.pgNet  < 0 ? 'neg' : ''}">${renderCell(pnl.pgActive,  pnl.pgNet)}</td>
+              <td class="${pnl.posActive && pnl.posNet < 0 ? 'neg' : ''}">${renderCell(pnl.posActive, pnl.posNet)}</td>
+              <td class="${pnl.channelNet < 0 ? 'neg' : ''}">AED ${fmtAED(pnl.channelNet)}</td>
+            </tr>
+            <tr>
+              <td>+ Banking Revenue (annual)</td>
+              <td></td><td></td>
+              <td>AED ${fmtAED(pnl.bankingRev)}</td>
+            </tr>
+            <tr class="pnl-total">
+              <td>= Total Relationship Net</td>
+              <td></td><td></td>
+              <td class="${pnl.totalRelNet < 0 ? 'neg' : ''}">AED ${fmtAED(pnl.totalRelNet)} <span style="font-weight:400;color:var(--fg-mild);font-size:12px;">· AED ${fmtAED(pnl.totalRelNet / 12)} / mo</span></td>
+            </tr>
+          </tbody>
+        </table>
 
-            <div class="verdict verdict--${v.status}">
-              <span class="verdict__dot"></span>
-              <div>
-                <div class="verdict__label">${v.statusLabel}</div>
-                <div class="verdict__detail">Target tier: ${v.targetTier ? v.targetTier.name : '—'}${v.reqBankEntry ? ` · Gate 1 needs AED ${fmtAED(v.reqBankEntry.min)} banking rev` : ''}</div>
-              </div>
-            </div>
-
-            ${v.belowPolicyFloor ? `<div class="alert">Requested MDR is below the policy floor (${fmtPct(v.minAllowedMdr)}). Manual exception required — sales cannot offer this rate without approval.</div>` : ''}
-
-            <div class="kpis">
-              <div class="kpi"><div class="kpi__label">Requested MDR</div><div class="kpi__value">${fmtPct(v.requestedMdrPct)}</div></div>
-              <div class="kpi"><div class="kpi__label">PG Cost %</div><div class="kpi__value">${fmtPct(v.pgCostPct)}</div></div>
-              <div class="kpi"><div class="kpi__label">PG Revenue</div><div class="kpi__value">AED ${fmtAED(v.pgRev)}</div></div>
-              <div class="kpi"><div class="kpi__label">PG-only Net</div><div class="kpi__value ${v.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(v.pgOnlyNet)}</div></div>
-              <div class="kpi"><div class="kpi__label">Total Relationship Net</div><div class="kpi__value ${v.totalRelNet < 0 ? 'neg' : ''}">AED ${fmtAED(v.totalRelNet)}</div></div>
-              <div class="kpi"><div class="kpi__label">Controlling Floor</div><div class="kpi__value">AED ${fmtAED(v.controllingFloor)}</div><div class="kpi__hint">${v.controllingFloorIsMdr ? 'Net MDR bps' : 'Min monthly rev'}</div></div>
-              <div class="kpi"><div class="kpi__label">${v.shortfall > 0 ? 'Required Extra Balance' : 'Coverage Buffer'}</div><div class="kpi__value">AED ${fmtAED(v.shortfall > 0 ? v.reqBalance : (v.totalRelNet - v.controllingFloor))}</div></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">PG Economics Waterfall</h3>
-            <div class="waterfall">
-              <div class="waterfall__row"><span class="waterfall__label">MDR revenue</span><span class="waterfall__value">AED ${fmtAED(v.requestedMdrPct * v.pgYearVol)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">+ E-com per-txn fee</span><span class="waterfall__value">AED ${fmtAED(v.engine.aovFeeAnnual)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">− PG cost stack</span><span class="waterfall__value neg">AED ${fmtAED(v.engine.pgCostAnnual)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">PG-only net</span><span class="waterfall__value ${v.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(v.pgOnlyNet)}</span></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">Relationship Coverage Waterfall</h3>
-            <div class="waterfall">
-              <div class="waterfall__row"><span class="waterfall__label">PG-only net</span><span class="waterfall__value ${v.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(v.pgOnlyNet)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">+ Banking revenue (NIM · FX · spend · loan yr-1)</span><span class="waterfall__value">AED ${fmtAED(v.bankingRev)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">vs Controlling floor</span><span class="waterfall__value">AED ${fmtAED(v.controllingFloor)}</span></div>
-              <div class="waterfall__row"><span class="waterfall__label">Verdict</span><span class="waterfall__value">${v.relCovers ? 'Covered' : 'Short by AED ' + fmtAED(v.shortfall)}</span></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">Approval Paths (Standalone)</h3>
-            <p class="card__subtitle">Each path closes the entire revenue gap on its own.</p>
-            ${standalonePathsHTML(v.shortfall, inp)}
-            ${loanMatrixHTML(v.shortfall, inp)}
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">Build-Your-Own Approval Path</h3>
-            <p class="card__subtitle">AED-based — change one and the others rebalance evenly across active drivers.</p>
-            ${byoHTML(s.manualPath, v.shortfall, inp, 'm-byo')}
-          </div>
-
-          <div class="pitch">
-            <div class="pitch__title">Sales Pitch</div>
-            <div class="pitch__body">${pitchText(v)}</div>
+        <div class="verdict verdict--${pnl.status}" style="margin-top:16px;">
+          <span class="verdict__dot"></span>
+          <div>
+            <div class="verdict__label">${pnl.statusLabel}</div>
+            <div class="verdict__detail">Total relationship net: AED ${fmtAED(pnl.totalRelNet)} (annual) · AED ${fmtAED(pnl.totalRelNet / 12)} (monthly)${pnl.shortfall > 0 ? ` · short AED ${fmtAED(pnl.shortfall)} annual` : ''}</div>
           </div>
         </div>
+
+        <div class="pitch">
+          <div class="pitch__title">Sales Pitch</div>
+          <div class="pitch__body">${pitchText(verdictForPitch)}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card__title">Approval Paths</h3>
+        <p class="card__subtitle">Banking levers to close the total relationship-revenue gap.</p>
+
+        <div class="subsection" style="margin-top:6px;">Standalone — Each Closes the Gap Alone</div>
+        ${standalonePathsHTML(pnl.shortfall, inp)}
+        ${loanMatrixHTML(pnl.shortfall, inp)}
+
+        ${pnl.shortfall > 0 ? `
+          <div class="subsection">Build-Your-Own (AED-based rebalance)</div>
+          ${byoHTML(s.manualPath, pnl.shortfall, inp, 'p-byo')}
+        ` : ''}
       </div>
     `;
 
-    wireSalesContext(panel);
-
-    panel.querySelector('#f-reqMdr').addEventListener('input', e => {
-      const pct = clampMin(e.target.value, 0) / 100;
-      setState({ requestedMdrPct: pct });
-      ['balance', 'spend', 'fx', 'loan'].forEach(k => setManualPath(k, 0));
-    });
-
-    wireByo(
-      panel,
-      () => getState().manualPath,
-      () => {
-        const cur = getState();
-        const verdict = runManualCalculator(buildEngineInput(cur), num(cur.requestedMdrPct, 0));
-        return verdict.shortfall;
-      },
-      () => buildEngineInput(getState()),
-      setManualPath,
-      'm-byo',
-    );
-    renderByoStatus(panel, s.manualPath, v.shortfall, inp, 'm-byo');
-  }
-
-  function renderSalesPanel() {
-    const s = getState();
-    const inp = buildEngineInput(s);
-    const desiredMdr = num(s.desiredMdrPct, 0);
-    const v = runManualCalculator(inp, desiredMdr);
-    const panel = document.getElementById('panel-sales');
-
-    const pathEmpty = ['balance', 'spend', 'fx', 'loan'].every(k => !s.salesPath[k]);
-    if (v.shortfall > 0 && pathEmpty) {
-      const tmp = {};
-      initApprovalPath(tmp, v.shortfall, inp);
-      Object.entries(tmp).forEach(([k, val]) => setSalesPath(k, val));
+    if (pnl.shortfall > 0) {
+      wireByo(
+        panel,
+        () => getState().manualPath,
+        () => {
+          const cur = getState();
+          return computePnl(cur).shortfall;
+        },
+        () => pnlApprovalInp(getState()),
+        setManualPath,
+        'p-byo',
+      );
+      renderByoStatus(panel, s.manualPath, pnl.shortfall, inp, 'p-byo');
     }
-
-    panel.innerHTML = `
-      <div class="split">
-        <div>${salesContextHTML(s)}</div>
-        <div>
-          <div class="card">
-            <h2 class="card__title">Sales Calculator (Reverse)</h2>
-            <p class="card__subtitle">Enter the MDR you want to offer — see the minimum relationship that supports it.</p>
-
-            <div class="field">
-              <label class="field__label" for="f-desiredMdr">Desired MDR to Offer %</label>
-              <input class="input input--lg mono" id="f-desiredMdr" type="number" min="0" step="0.01" value="${(desiredMdr * 100).toFixed(2)}" />
-              <div class="field__hint">Vintage floor: ${fmtPct(v.minAllowedMdr)}</div>
-            </div>
-
-            <div class="verdict verdict--${v.status}">
-              <span class="verdict__dot"></span>
-              <div>
-                <div class="verdict__label">${v.statusLabel}</div>
-                <div class="verdict__detail">Target tier: ${v.targetTier ? v.targetTier.name : '—'}${v.reqBankEntry ? ` · Gate 1 needs AED ${fmtAED(v.reqBankEntry.min)} banking rev` : ''}</div>
-              </div>
-            </div>
-
-            ${v.belowPolicyFloor ? `<div class="alert">Desired MDR is below the policy floor (${fmtPct(v.minAllowedMdr)}). Manual exception required.</div>` : ''}
-
-            <div class="kpis">
-              <div class="kpi"><div class="kpi__label">Desired MDR</div><div class="kpi__value">${fmtPct(v.requestedMdrPct)}</div></div>
-              <div class="kpi"><div class="kpi__label">PG Revenue at MDR</div><div class="kpi__value">AED ${fmtAED(v.pgRev)}</div></div>
-              <div class="kpi"><div class="kpi__label">PG-only Net</div><div class="kpi__value ${v.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(v.pgOnlyNet)}</div></div>
-              <div class="kpi"><div class="kpi__label">Current Banking Rev</div><div class="kpi__value">AED ${fmtAED(v.bankingRev)}</div></div>
-              <div class="kpi"><div class="kpi__label">Floor</div><div class="kpi__value">AED ${fmtAED(v.controllingFloor)}</div></div>
-              <div class="kpi"><div class="kpi__label">Revenue Shortfall</div><div class="kpi__value ${v.shortfall > 0 ? 'neg' : ''}">AED ${fmtAED(v.shortfall)}</div></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">Minimum Relationship — Standalone Paths</h3>
-            <p class="card__subtitle">Each card shows the AED in a single driver that would close the gap alone.</p>
-            ${standalonePathsHTML(v.shortfall, inp)}
-            ${loanMatrixHTML(v.shortfall, inp)}
-          </div>
-
-          <div class="card">
-            <h3 class="card__title">Build-Your-Own Approval Path</h3>
-            <p class="card__subtitle">Distribute the shortfall across multiple drivers. AED-based rebalancing.</p>
-            ${byoHTML(s.salesPath, v.shortfall, inp, 's-byo')}
-          </div>
-
-          <div class="pitch">
-            <div class="pitch__title">Sales Pitch</div>
-            <div class="pitch__body">${pitchText(v)}</div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    wireSalesContext(panel);
-    panel.querySelector('#f-desiredMdr').addEventListener('input', e => {
-      const pct = clampMin(e.target.value, 0) / 100;
-      setState({ desiredMdrPct: pct });
-      ['balance', 'spend', 'fx', 'loan'].forEach(k => setSalesPath(k, 0));
-    });
-
-    wireByo(
-      panel,
-      () => getState().salesPath,
-      () => {
-        const cur = getState();
-        const verdict = runManualCalculator(buildEngineInput(cur), num(cur.desiredMdrPct, 0));
-        return verdict.shortfall;
-      },
-      () => buildEngineInput(getState()),
-      setSalesPath,
-      's-byo',
-    );
-    renderByoStatus(panel, s.salesPath, v.shortfall, inp, 's-byo');
   }
 
   function pctInput(value, onCh) {
     const input = document.createElement('input');
     input.className = 'input mono';
-    input.type = 'number';
+    input.type = 'text';
+    input.inputMode = 'decimal';
     input.step = '0.0001';
     input.value = (value * 100).toFixed(4);
     input.addEventListener('input', e => {
@@ -1326,7 +1471,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   function numInput(value, onCh, step) {
     const input = document.createElement('input');
     input.className = 'input mono';
-    input.type = 'number';
+    input.type = 'text';
+    input.inputMode = 'decimal';
     input.step = String(step || 1);
     input.value = value;
     input.addEventListener('input', e => onCh(num(e.target.value, 0)));
@@ -1352,48 +1498,23 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
         </div>
 
         <div class="backend-section">
-          <div class="section-label">Customer markup (per MCC)</div>
-          <table class="backend-table"><thead><tr><th>Industry</th><th>Markup %</th></tr></thead><tbody id="t-markup"></tbody></table>
-        </div>
-
-        <div class="backend-section">
-          <div class="section-label">Tier MDR matrix (per MCC × tier)</div>
-          <table class="backend-table"><thead><tr><th>Industry</th>${tiers.map(t => `<th>${t.name} %</th>`).join('')}</tr></thead><tbody id="t-tierMdr"></tbody></table>
-        </div>
-
-        <div class="backend-section">
           <div class="section-label">Banking yields</div>
           <table class="backend-table"><thead><tr><th>Driver</th><th>Rate %</th></tr></thead><tbody id="t-yields"></tbody></table>
         </div>
 
         <div class="backend-section">
           <div class="section-label">PG cost stack</div>
-          <table class="backend-table"><thead><tr><th>Component</th><th>Value</th></tr></thead><tbody id="t-costs"></tbody></table>
+          <table class="backend-table"><thead><tr><th>Component</th><th>Value</th></tr></thead><tbody id="t-costs-pg"></tbody></table>
         </div>
 
         <div class="backend-section">
-          <div class="section-label">E-com per-txn fee brackets (AED)</div>
-          <table class="backend-table"><thead><tr><th>Bracket</th><th>Fee (AED)</th></tr></thead><tbody id="t-ecom"></tbody></table>
+          <div class="section-label">POS cost stack</div>
+          <table class="backend-table"><thead><tr><th>Component</th><th>Value</th></tr></thead><tbody id="t-costs-pos"></tbody></table>
         </div>
 
         <div class="backend-section">
           <div class="section-label">Risk adjustment (additive on MDR)</div>
           <table class="backend-table"><thead><tr><th>Risk</th><th>Adj %</th></tr></thead><tbody id="t-risk"></tbody></table>
-        </div>
-
-        <div class="backend-section">
-          <div class="section-label">Banking revenue → tier cap (Gate 1)</div>
-          <table class="backend-table"><thead><tr><th>Label</th><th>Min AED</th><th>Cap</th></tr></thead><tbody id="t-banking"></tbody></table>
-        </div>
-
-        <div class="backend-section">
-          <div class="section-label">PG volume → tier cap (Gate 3)</div>
-          <table class="backend-table"><thead><tr><th>Label</th><th>Min AED</th><th>Cap</th></tr></thead><tbody id="t-pgScale"></tbody></table>
-        </div>
-
-        <div class="backend-section">
-          <div class="section-label">Commercial floors</div>
-          <table class="backend-table"><thead><tr><th>Floor</th><th>Value</th></tr></thead><tbody id="t-floors"></tbody></table>
         </div>
       </div>
     `;
@@ -1408,28 +1529,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       tInter.appendChild(tr);
     });
 
-    const tMark = panel.querySelector('#t-markup');
-    Object.entries(mccMarkupTable).forEach(([k, v]) => {
-      const tr = document.createElement('tr');
-      const tdLabel = document.createElement('td'); tdLabel.textContent = (industryInterchange[k] && industryInterchange[k].label) || k;
-      const tdV = document.createElement('td'); tdV.appendChild(pctInput(v, x => { mccMarkupTable[k] = x; notifyMcc(); }));
-      tr.append(tdLabel, tdV);
-      tMark.appendChild(tr);
-    });
-
-    const tTierMdr = panel.querySelector('#t-tierMdr');
-    Object.entries(mccTierMDR).forEach(([k, arr]) => {
-      const tr = document.createElement('tr');
-      const tdLabel = document.createElement('td'); tdLabel.textContent = (industryInterchange[k] && industryInterchange[k].label) || k;
-      tr.appendChild(tdLabel);
-      arr.forEach((val, i) => {
-        const td = document.createElement('td');
-        td.appendChild(pctInput(val, x => { mccTierMDR[k][i] = x; notifyMcc(); }));
-        tr.appendChild(td);
-      });
-      tTierMdr.appendChild(tr);
-    });
-
     const tYields = panel.querySelector('#t-yields');
     const yieldLabels = { rBal: 'Balance NIM (rBal)', rXb: 'Cross-border take (rXb)', rDeb: 'Spend interchange (rDeb)', rLoan: 'Loan rate (rLoan)' };
     Object.entries(defaultYields).forEach(([k, v]) => {
@@ -1440,32 +1539,31 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       tYields.appendChild(tr);
     });
 
-    const tCosts = panel.querySelector('#t-costs');
-    const costRows = [
+    function renderCostStack(tbodyId, stack, rows) {
+      const tbody = panel.querySelector(tbodyId);
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const tdLabel = document.createElement('td'); tdLabel.textContent = row.label;
+        const tdV = document.createElement('td');
+        tdV.appendChild(row.kind === 'pct'
+          ? pctInput(stack[row.key], x => { stack[row.key] = x; notifyMcc(); })
+          : numInput(stack[row.key], x => { stack[row.key] = x; notifyMcc(); }, row.step));
+        tr.append(tdLabel, tdV);
+        tbody.appendChild(tr);
+      });
+    }
+    const baseCostRows = [
       { key: 'pineLabs',  label: 'Pine Labs variable %',  kind: 'pct' },
       { key: 'fixedCost', label: 'Fixed cost (AED / txn)', kind: 'num', step: 0.01 },
       { key: 'debitMix',  label: 'Default debit mix %',   kind: 'pct' },
     ];
-    costRows.forEach(row => {
-      const tr = document.createElement('tr');
-      const tdLabel = document.createElement('td'); tdLabel.textContent = row.label;
-      const tdV = document.createElement('td');
-      tdV.appendChild(row.kind === 'pct'
-        ? pctInput(defaultCosts[row.key], x => { defaultCosts[row.key] = x; notifyMcc(); })
-        : numInput(defaultCosts[row.key], x => { defaultCosts[row.key] = x; notifyMcc(); }, row.step));
-      tr.append(tdLabel, tdV);
-      tCosts.appendChild(tr);
-    });
-
-    const tEcom = panel.querySelector('#t-ecom');
-    ['0 – 200', '200 – 500', '500 – 1,000', '1,000+'].forEach((label, i) => {
-      const tr = document.createElement('tr');
-      const tdL = document.createElement('td'); tdL.textContent = label;
-      const tdV = document.createElement('td');
-      tdV.appendChild(numInput(CMC_FEE_DEFAULTS[i], x => { CMC_FEE_DEFAULTS[i] = x; notifyMcc(); }, 0.05));
-      tr.append(tdL, tdV);
-      tEcom.appendChild(tr);
-    });
+    renderCostStack('#t-costs-pg',  defaultCostsPG,  baseCostRows);
+    renderCostStack('#t-costs-pos', defaultCostsPOS, [
+      ...baseCostRows,
+      { key: 'deviceCost',     label: 'Terminal procurement (AED · per terminal)',    kind: 'num', step: 50 },
+      { key: 'terminalMgmt',   label: 'Terminal management (AED · per terminal · monthly)', kind: 'num', step: 1 },
+      { key: 'paperRollPer60', label: 'Paper roll (AED · per 60 txns)',               kind: 'num', step: 0.05 },
+    ]);
 
     const tRisk = panel.querySelector('#t-risk');
     ['low', 'med', 'high'].forEach(k => {
@@ -1476,51 +1574,41 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       tRisk.appendChild(tr);
     });
 
-    const tBanking = panel.querySelector('#t-banking');
-    bankingRevTiers.forEach((b, i) => {
-      const tr = document.createElement('tr');
-      const tdL = document.createElement('td'); tdL.textContent = b.label;
-      const tdMin = document.createElement('td'); tdMin.appendChild(numInput(b.min, x => { bankingRevTiers[i].min = x; notifyMcc(); }, 1000));
-      const tdCap = document.createElement('td'); tdCap.textContent = b.cap;
-      tr.append(tdL, tdMin, tdCap);
-      tBanking.appendChild(tr);
-    });
-
-    const tPg = panel.querySelector('#t-pgScale');
-    pgScaleTiers.forEach((p, i) => {
-      const tr = document.createElement('tr');
-      const tdL = document.createElement('td'); tdL.textContent = p.label;
-      const tdMin = document.createElement('td'); tdMin.appendChild(numInput(p.min, x => { pgScaleTiers[i].min = x; notifyMcc(); }, 10000));
-      const tdCap = document.createElement('td'); tdCap.textContent = p.cap;
-      tr.append(tdL, tdMin, tdCap);
-      tPg.appendChild(tr);
-    });
-
-    const tFloors = panel.querySelector('#t-floors');
-    const floorRows = [
-      { key: 'netMdrFloorBps', label: 'Net MDR floor (bps)', step: 1 },
-      { key: 'minMonthlyRev',  label: 'Min monthly relationship rev (AED)', step: 100 },
-    ];
-    floorRows.forEach(row => {
-      const tr = document.createElement('tr');
-      const tdL = document.createElement('td'); tdL.textContent = row.label;
-      const tdV = document.createElement('td');
-      tdV.appendChild(numInput(defaultFloors[row.key], x => { defaultFloors[row.key] = x; notifyMcc(); }, row.step));
-      tr.append(tdL, tdV);
-      tFloors.appendChild(tr);
-    });
-
     panel.querySelector('#backend-reset').addEventListener('click', () => {
       resetMccDefaults();
     });
   }
 
   function render() {
+    // Capture focus + scroll before innerHTML replacement (which would otherwise
+    // blow away focus and reset scroll to top on every keystroke).
+    const active     = document.activeElement;
+    const activeId   = active && active.id;
+    const cursorS    = (active && typeof active.selectionStart === 'number') ? active.selectionStart : null;
+    const cursorE    = (active && typeof active.selectionEnd   === 'number') ? active.selectionEnd   : null;
+    const scrollX    = window.scrollX;
+    const scrollY    = window.scrollY;
+
     showActiveTab();
     const s = getState();
     if (s.activeTab === 'manual')  renderManualPanel();
-    if (s.activeTab === 'sales')   renderSalesPanel();
+    if (s.activeTab === 'pnl')     renderPnlPanel();
     if (s.activeTab === 'backend') renderBackendPanel();
+
+    // Restore focus + cursor + scroll.
+    if (activeId) {
+      const el = document.getElementById(activeId);
+      if (el) {
+        try {
+          el.focus({ preventScroll: true });
+          // setSelectionRange throws on number inputs in some browsers — swallow.
+          if (cursorS !== null && typeof el.setSelectionRange === 'function') {
+            el.setSelectionRange(cursorS, cursorE);
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+    window.scrollTo(scrollX, scrollY);
   }
 
   mountShell();
@@ -1528,7 +1616,20 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   onChange(render);
   subscribeMcc(render);
 
-  window.__wio = { getState, runManualCalculator, calcTierRevGap };
+  // Refresh button — clears persisted state and reloads (full reset).
+  const refreshBtn = document.getElementById('app-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      if (!confirm('Reset all calculator inputs and backend assumptions to defaults?')) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+      location.reload();
+    });
+  }
+
+  window.__wio = {
+    getState, runManualCalculator, runPricingEngine,
+    runChannel, buildChannelInput, computePnl,
+  };
 })();
   </script>
 </body>

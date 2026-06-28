@@ -531,16 +531,223 @@ function renderSalesPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Backend Assumptions panel (commit 6 fills this in)
+// Backend Assumptions panel — editable defaults from LOGIC_EXTRACT §1
 // ---------------------------------------------------------------------------
+function pctInput(value, onChange) {
+  // Bind an input that edits a percentage (decimal stored, % shown).
+  const input = document.createElement('input');
+  input.className = 'input mono';
+  input.type = 'number';
+  input.step = '0.0001';
+  input.value = (value * 100).toFixed(4);
+  input.addEventListener('input', e => {
+    const pct = num(e.target.value, 0) / 100;
+    onChange(pct);
+  });
+  return input;
+}
+
+function numInput(value, onChange, step = 1) {
+  const input = document.createElement('input');
+  input.className = 'input mono';
+  input.type = 'number';
+  input.step = String(step);
+  input.value = value;
+  input.addEventListener('input', e => onChange(num(e.target.value, 0)));
+  return input;
+}
+
 function renderBackendPanel() {
   const panel = document.getElementById('panel-backend');
+
   panel.innerHTML = `
     <div class="card">
-      <h2 class="card__title">Backend Assumptions</h2>
-      <p class="card__subtitle">Editable defaults from <code>LOGIC_EXTRACT §1</code>. Coming online in the next commit.</p>
+      <div class="toolbar">
+        <div>
+          <h2 class="card__title">Backend Assumptions</h2>
+          <p class="card__subtitle">Edit any value — calculators re-render live across all tabs.</p>
+        </div>
+        <button class="btn btn--ghost" id="backend-reset">Reset to defaults</button>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">MCC Interchange (debit / credit)</div>
+        <table class="backend-table"><thead><tr><th>Industry</th><th>Debit %</th><th>Credit %</th></tr></thead><tbody id="t-interchange"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Customer markup (per MCC)</div>
+        <table class="backend-table"><thead><tr><th>Industry</th><th>Markup %</th></tr></thead><tbody id="t-markup"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Tier MDR matrix (per MCC × tier)</div>
+        <table class="backend-table"><thead><tr><th>Industry</th>${tiers.map(t => `<th>${t.name} %</th>`).join('')}</tr></thead><tbody id="t-tierMdr"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Banking yields</div>
+        <table class="backend-table"><thead><tr><th>Driver</th><th>Rate %</th></tr></thead><tbody id="t-yields"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">PG cost stack</div>
+        <table class="backend-table"><thead><tr><th>Component</th><th>Value</th></tr></thead><tbody id="t-costs"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">E-com per-txn fee brackets (AED)</div>
+        <table class="backend-table"><thead><tr><th>Bracket</th><th>Fee (AED)</th></tr></thead><tbody id="t-ecom"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Risk adjustment (additive on MDR)</div>
+        <table class="backend-table"><thead><tr><th>Risk</th><th>Adj %</th></tr></thead><tbody id="t-risk"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Banking revenue → tier cap (Gate 1)</div>
+        <table class="backend-table"><thead><tr><th>Label</th><th>Min AED</th><th>Cap</th></tr></thead><tbody id="t-banking"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">PG volume → tier cap (Gate 3)</div>
+        <table class="backend-table"><thead><tr><th>Label</th><th>Min AED</th><th>Cap</th></tr></thead><tbody id="t-pgScale"></tbody></table>
+      </div>
+
+      <div class="backend-section">
+        <div class="section-label">Commercial floors</div>
+        <table class="backend-table"><thead><tr><th>Floor</th><th>Value</th></tr></thead><tbody id="t-floors"></tbody></table>
+      </div>
     </div>
   `;
+
+  // ------- Interchange ----------------------------------------------------
+  const tInter = panel.querySelector('#t-interchange');
+  Object.entries(industryInterchange).forEach(([k, v]) => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = v.label;
+    const tdD = document.createElement('td'); tdD.appendChild(pctInput(v.debit,  x => { industryInterchange[k].debit  = x; notifyMcc(); }));
+    const tdC = document.createElement('td'); tdC.appendChild(pctInput(v.credit, x => { industryInterchange[k].credit = x; notifyMcc(); }));
+    tr.append(tdLabel, tdD, tdC);
+    tInter.appendChild(tr);
+  });
+
+  // ------- Markup ---------------------------------------------------------
+  const tMark = panel.querySelector('#t-markup');
+  Object.entries(mccMarkupTable).forEach(([k, v]) => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = industryInterchange[k]?.label || k;
+    const tdV = document.createElement('td'); tdV.appendChild(pctInput(v, x => { mccMarkupTable[k] = x; notifyMcc(); }));
+    tr.append(tdLabel, tdV);
+    tMark.appendChild(tr);
+  });
+
+  // ------- Tier MDR matrix ------------------------------------------------
+  const tTierMdr = panel.querySelector('#t-tierMdr');
+  Object.entries(mccTierMDR).forEach(([k, arr]) => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = industryInterchange[k]?.label || k;
+    tr.appendChild(tdLabel);
+    arr.forEach((val, i) => {
+      const td = document.createElement('td');
+      td.appendChild(pctInput(val, x => { mccTierMDR[k][i] = x; notifyMcc(); }));
+      tr.appendChild(td);
+    });
+    tTierMdr.appendChild(tr);
+  });
+
+  // ------- Yields ---------------------------------------------------------
+  const tYields = panel.querySelector('#t-yields');
+  const yieldLabels = { rBal: 'Balance NIM (rBal)', rXb: 'Cross-border take (rXb)', rDeb: 'Spend interchange (rDeb)', rLoan: 'Loan rate (rLoan)' };
+  Object.entries(defaultYields).forEach(([k, v]) => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = yieldLabels[k] || k;
+    const tdV = document.createElement('td'); tdV.appendChild(pctInput(v, x => { defaultYields[k] = x; notifyMcc(); }));
+    tr.append(tdLabel, tdV);
+    tYields.appendChild(tr);
+  });
+
+  // ------- Costs ----------------------------------------------------------
+  const tCosts = panel.querySelector('#t-costs');
+  const costRows = [
+    { key: 'pineLabs',  label: 'Pine Labs variable %', kind: 'pct' },
+    { key: 'fixedCost', label: 'Fixed cost (AED / txn)', kind: 'num', step: 0.01 },
+    { key: 'debitMix',  label: 'Default debit mix %', kind: 'pct' },
+  ];
+  costRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td'); tdLabel.textContent = row.label;
+    const tdV = document.createElement('td');
+    tdV.appendChild(row.kind === 'pct'
+      ? pctInput(defaultCosts[row.key], x => { defaultCosts[row.key] = x; notifyMcc(); })
+      : numInput(defaultCosts[row.key], x => { defaultCosts[row.key] = x; notifyMcc(); }, row.step));
+    tr.append(tdLabel, tdV);
+    tCosts.appendChild(tr);
+  });
+
+  // ------- E-com brackets -------------------------------------------------
+  const tEcom = panel.querySelector('#t-ecom');
+  ['0 – 200', '200 – 500', '500 – 1,000', '1,000+'].forEach((label, i) => {
+    const tr = document.createElement('tr');
+    const tdL = document.createElement('td'); tdL.textContent = label;
+    const tdV = document.createElement('td');
+    tdV.appendChild(numInput(CMC_FEE_DEFAULTS[i], x => { CMC_FEE_DEFAULTS[i] = x; notifyMcc(); }, 0.05));
+    tr.append(tdL, tdV);
+    tEcom.appendChild(tr);
+  });
+
+  // ------- Risk -----------------------------------------------------------
+  const tRisk = panel.querySelector('#t-risk');
+  ['low', 'med', 'high'].forEach(k => {
+    const tr = document.createElement('tr');
+    const tdL = document.createElement('td'); tdL.textContent = { low: 'Low', med: 'Medium', high: 'High' }[k];
+    const tdV = document.createElement('td'); tdV.appendChild(pctInput(riskAdj[k], x => { riskAdj[k] = x; notifyMcc(); }));
+    tr.append(tdL, tdV);
+    tRisk.appendChild(tr);
+  });
+
+  // ------- Banking-rev tiers ---------------------------------------------
+  const tBanking = panel.querySelector('#t-banking');
+  bankingRevTiers.forEach((b, i) => {
+    const tr = document.createElement('tr');
+    const tdL = document.createElement('td'); tdL.textContent = b.label;
+    const tdMin = document.createElement('td'); tdMin.appendChild(numInput(b.min, x => { bankingRevTiers[i].min = x; notifyMcc(); }, 1000));
+    const tdCap = document.createElement('td'); tdCap.textContent = b.cap;
+    tr.append(tdL, tdMin, tdCap);
+    tBanking.appendChild(tr);
+  });
+
+  // ------- PG-scale tiers ------------------------------------------------
+  const tPg = panel.querySelector('#t-pgScale');
+  pgScaleTiers.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    const tdL = document.createElement('td'); tdL.textContent = p.label;
+    const tdMin = document.createElement('td'); tdMin.appendChild(numInput(p.min, x => { pgScaleTiers[i].min = x; notifyMcc(); }, 10000));
+    const tdCap = document.createElement('td'); tdCap.textContent = p.cap;
+    tr.append(tdL, tdMin, tdCap);
+    tPg.appendChild(tr);
+  });
+
+  // ------- Floors ---------------------------------------------------------
+  const tFloors = panel.querySelector('#t-floors');
+  const floorRows = [
+    { key: 'netMdrFloorBps', label: 'Net MDR floor (bps)', step: 1 },
+    { key: 'minMonthlyRev',  label: 'Min monthly relationship rev (AED)', step: 100 },
+  ];
+  floorRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const tdL = document.createElement('td'); tdL.textContent = row.label;
+    const tdV = document.createElement('td');
+    tdV.appendChild(numInput(defaultFloors[row.key], x => { defaultFloors[row.key] = x; notifyMcc(); }, row.step));
+    tr.append(tdL, tdV);
+    tFloors.appendChild(tr);
+  });
+
+  panel.querySelector('#backend-reset').addEventListener('click', () => {
+    resetMccDefaults();
+    // resetMccDefaults() already calls notify(), which fires re-render via subscribe.
+  });
 }
 
 // ---------------------------------------------------------------------------

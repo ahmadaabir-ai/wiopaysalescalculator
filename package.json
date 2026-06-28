@@ -1,0 +1,13 @@
+{
+  "name": "wio-pay-sales-calculator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Wio Pay Sales Calculator — Manual Calculator + Sales Calculator (reverse) sharing one pricing engine.",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "author": "Aabir Ahmad <aahmad@wio.io>",
+  "license": "UNLICENSED"
+}

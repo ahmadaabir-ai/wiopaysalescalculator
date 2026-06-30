@@ -318,6 +318,150 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
   margin: 24px 0 8px;
 }
 
+/* ===== Detailed channel breakdown (PG / POS Section views) ===== */
+.calc-detail { padding-top: 2px; }
+.calc-detail__badge {
+  display: inline-block;
+  background: var(--midnight-900);
+  color: #C7F751;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.calc-detail__title {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--midnight-900);
+  margin: 0 0 10px;
+}
+.calc-detail__desc {
+  font-size: 14px;
+  color: var(--midnight-600);
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+.calc-detail__desc b { color: var(--midnight-900); font-weight: 700; }
+
+.cost-stack {
+  border: 1px solid var(--stroke-primary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+.cost-stack__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--stroke-primary);
+  font-size: 14px;
+}
+.cost-stack__row:last-child { border-bottom: none; }
+.cost-stack__row--total { font-weight: 700; background: var(--midnight-10); }
+.cost-stack__row--total .cost-stack__label { font-weight: 700; }
+.cost-stack__row--total .cost-stack__value { font-weight: 700; }
+.cost-stack__label { color: var(--midnight-900); }
+.cost-stack__value {
+  color: var(--midnight-900);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.num-waterfall { margin-bottom: 0; }
+.num-row {
+  display: grid;
+  grid-template-columns: 28px 1.1fr 1.2fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 16px;
+  background: #F8F7F0;
+  border-radius: var(--radius-sm);
+}
+.num-row--total { background: var(--midnight-10); }
+.num-row--final { background: var(--midnight-10); }
+.num-row__num {
+  width: 22px; height: 22px;
+  background: rgba(15,26,56,0.08);
+  color: var(--midnight-700);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 700;
+}
+.num-row__label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--midnight-900);
+}
+.num-row__calc {
+  font-size: 13px;
+  color: var(--midnight-500);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.num-row__value {
+  font-weight: 700;
+  font-size: 15px;
+  font-family: var(--font-head);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--midnight-900);
+}
+.num-row__value.neg { color: var(--red-800); }
+.num-row__value.pos { color: var(--green-800); }
+.num-row__connector {
+  text-align: center;
+  font-size: 14px;
+  color: var(--midnight-500);
+  padding: 2px 0 0 0;
+  height: 16px;
+  line-height: 1;
+}
+
+.sub-breakdown {
+  margin: 16px 0 20px;
+  border: 1px solid var(--stroke-primary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.sub-breakdown__title {
+  background: var(--midnight-10);
+  padding: 10px 16px;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--midnight-700);
+  border-bottom: 1px solid var(--stroke-primary);
+}
+.sub-breakdown .cost-stack__row { border-bottom: 1px solid var(--stroke-primary); }
+.sub-breakdown .cost-stack__row:last-child { border-bottom: none; }
+
+.calc-detail__footer {
+  background: #F8F7F0;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 13.5px;
+  color: var(--midnight-700);
+  line-height: 1.6;
+  margin-top: 18px;
+}
+.calc-detail__footer.neg { background: var(--red-50); color: var(--red-800); }
+.calc-detail__footer.pos { background: var(--green-50); color: var(--green-800); }
+
 /* Manual Calculator sub-tab strip */
 .subtabs {
   display: flex; gap: 4px; flex-wrap: wrap;
@@ -594,6 +738,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       .reduce((s, k) => s + pathRevenue(k, state[k] || 0, inp), 0);
   }
 
+  // Standalone init — each path independently carries the full gap (for
+  // the "Each Closes the Gap Alone" cards in P&L).
   function initApprovalPath(state, shortfall, inp) {
     const rates = { balance: inp.rBal, spend: inp.rDeb, fx: inp.rXb, loan: inp.rLoan };
     ['balance', 'spend', 'fx', 'loan'].forEach(k => {
@@ -601,19 +747,55 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     });
   }
 
+  // BYO init — split the gap evenly across rate-positive drivers so the
+  // user starts with a balanced mix. Setting any one to zero will then
+  // "increase the others accordingly" via rebalanceApprovalPath.
+  function initByoEqualSplit(state, shortfall, inp) {
+    const rates = { balance: inp.rBal, spend: inp.rDeb, fx: inp.rXb, loan: inp.rLoan };
+    const valid = ['balance', 'spend', 'fx', 'loan'].filter(k => rates[k] > 0);
+    const revPer = (valid.length > 0 && shortfall > 0) ? shortfall / valid.length : 0;
+    ['balance', 'spend', 'fx', 'loan'].forEach(k => {
+      state[k] = rates[k] > 0 ? Math.ceil(revToAed(k, revPer, inp)) : 0;
+    });
+  }
+
+  // BYO rebalance — paths the user has set to zero stay at zero. The
+  // remaining gap is split evenly across the OTHER active paths (non-zero,
+  // rate-positive). At least one path must remain active; if the user
+  // zeroes the last active one, it snaps back carrying the full gap.
   function rebalanceApprovalPath(state, changedKey, newAed, shortfall, inp) {
+    const rates   = { balance: inp.rBal, spend: inp.rDeb, fx: inp.rXb, loan: inp.rLoan };
+    const allKeys = ['balance', 'spend', 'fx', 'loan'];
+
+    // 1. Apply the user's change.
     state[changedKey] = Math.max(0, +newAed || 0);
-    const revChanged = pathRevenue(changedKey, state[changedKey], inp);
-    const remaining  = Math.max(0, shortfall - revChanged);
-    const rates  = { balance: inp.rBal, spend: inp.rDeb, fx: inp.rXb, loan: inp.rLoan };
-    const others = ['balance', 'spend', 'fx', 'loan']
-      .filter(k => k !== changedKey && rates[k] > 0);
-    if (others.length === 0 || remaining <= 0) {
-      others.forEach(k => { state[k] = 0; });
-    } else {
-      const revPerPath = remaining / others.length;
-      others.forEach(k => { state[k] = Math.ceil(revToAed(k, revPerPath, inp)); });
+
+    // 2. Determine which paths are currently active (positive value AND positive yield).
+    let active = allKeys.filter(k => rates[k] > 0 && state[k] > 0);
+
+    // 3. Safety: at least one path must stay active. If the user just zeroed
+    //    the last active one, snap it back to carry the full gap.
+    if (active.length === 0 && shortfall > 0) {
+      const pickKey = (rates[changedKey] > 0) ? changedKey : allKeys.find(k => rates[k] > 0);
+      if (!pickKey) return;
+      state[pickKey] = Math.ceil(revToAed(pickKey, shortfall, inp));
+      active = [pickKey];
     }
+
+    // 4. Distribute remaining gap across active paths OTHER than changedKey.
+    //    The just-changed path keeps the value the user typed (or the auto-restored full value).
+    const others = active.filter(k => k !== changedKey);
+    if (others.length === 0) return; // only the changed path is active
+
+    const revChanged = active.includes(changedKey)
+      ? pathRevenue(changedKey, state[changedKey], inp)
+      : 0;
+    const remaining  = Math.max(0, shortfall - revChanged);
+    const revPerPath = remaining / others.length;
+
+    others.forEach(k => {
+      state[k] = Math.ceil(revToAed(k, revPerPath, inp));
+    });
   }
 
   function loanTenureMatrix(shortfall, inp, tenures) {
@@ -1172,23 +1354,128 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     return { status: 'cond', statusLabel: 'Channel economics negative — relies on banking / approval' };
   }
 
+  // Detailed channel breakdown — shows industry, card mix, cost stack
+  // build-up, and a numbered revenue-minus-cost waterfall.
   function channelWaterfallHTML(channel, ch) {
-    const isPos = channel === 'pos';
-    const e = ch.engine;
+    const isPos    = channel === 'pos';
+    const e        = ch.engine;
+    const inp      = ch.inp;
+    const ic       = industryInterchange[inp.industry] || industryInterchange.retail;
+    const debitMix = inp.debitMix;
+    const creditMix = 1 - debitMix;
+    const modeLabel = isPos ? 'POS' : 'PG';
+    const stack    = isPos ? defaultCostsPOS : defaultCostsPG;
+    const reqPct   = ch.requestedMdrPct;
+    const mdrRev   = reqPct * ch.pgYearVol;
+    const ecomRev  = e.aovFeeAnnual;
+
+    // ---- Cost-stack rows ----
+    const fixedCostPctOfAOV = inp.fixedCost / Math.max(1, inp.aov);
+    const costStack = [
+      ['MCC / Industry', ic.label],
+      ['Debit interchange',
+        `${(ic.debit*100).toFixed(2)}% × ${(debitMix*100).toFixed(0)}% = ${(ic.debit*debitMix*100).toFixed(4)}%`],
+      ['Credit interchange',
+        `${(ic.credit*100).toFixed(2)}% × ${(creditMix*100).toFixed(0)}% = ${(ic.credit*creditMix*100).toFixed(4)}%`],
+      ['Pine Labs variable',
+        `${(inp.pineLabs*100).toFixed(2)}%`],
+      ['Fixed cost ÷ AOV',
+        `AED ${inp.fixedCost.toFixed(2)} ÷ AED ${fmtAED(inp.aov)} = ${(fixedCostPctOfAOV*100).toFixed(4)}%`],
+    ];
+    const costStackHtml = costStack.map(([l, v]) =>
+      `<div class="cost-stack__row"><span class="cost-stack__label">${l}</span><span class="cost-stack__value">${v}</span></div>`
+    ).join('') +
+      `<div class="cost-stack__row cost-stack__row--total"><span class="cost-stack__label">Total ${modeLabel} cost %</span><span class="cost-stack__value">${(e.variableCostPct*100).toFixed(4)}%</span></div>`;
+
+    // ---- Build numbered waterfall steps ----
+    const rows = [];
+    let n = 1;
+
+    rows.push({ n: n++, label: 'MDR Revenue',
+      calc: `${(reqPct*100).toFixed(2)}% × AED ${fmtAED(ch.pgYearVol)}`,
+      value: `AED ${fmtAED(mdrRev)}` });
+
+    if (!isPos) {
+      rows.push({ n: n++, label: 'E-com Fee Revenue',
+        calc: `AED ${e.aovFee.toFixed(2)} × ${fmtAED(e.txnsYear)} txns`,
+        value: `AED ${fmtAED(ecomRev)}` });
+    }
+
+    if (isPos && e.excessTerminalRevAnnual > 0) {
+      rows.push({ n: n++, label: 'Excess Terminal Revenue',
+        calc: `(AED ${fmtAED(inp.chargedPerTerminal)} − AED ${fmtAED(stack.deviceCost)}) × ${inp.numTerminals}`,
+        value: `AED ${fmtAED(e.excessTerminalRevAnnual)}` });
+    }
+    if (isPos && e.setupFeeAnnual > 0) {
+      rows.push({ n: n++, label: 'Setup Fee Revenue',
+        calc: `AED ${fmtAED(inp.setupFeeMonthly)}/mo × 12`,
+        value: `AED ${fmtAED(e.setupFeeAnnual)}` });
+    }
+
+    rows.push({ n: n++, label: `Total ${modeLabel} Revenue`,
+      calc: 'Sum of revenue items',
+      value: `AED ${fmtAED(ch.pgRev)}`,
+      isTotal: true });
+
+    rows.push({ n: n++, label: `Less Variable ${modeLabel} Cost`,
+      calc: `${(e.variableCostPct*100).toFixed(4)}% × AED ${fmtAED(ch.pgYearVol)}`,
+      value: `– AED ${fmtAED(e.variableCostAnnual)}`,
+      isNeg: true });
+
+    if (isPos && e.posOtherCostAnnual > 0) {
+      rows.push({ n: n++, label: 'Less POS Other Cost',
+        calc: 'Net terminal procurement + mgmt + paper roll',
+        value: `– AED ${fmtAED(e.posOtherCostAnnual)}`,
+        isNeg: true });
+    }
+
+    rows.push({ n: n++, label: `${modeLabel}-Only Net`,
+      calc: `${modeLabel} Revenue – ${modeLabel} Cost`,
+      value: `AED ${fmtAED(ch.pgOnlyNet)}`,
+      isFinal: true, isNeg: ch.pgOnlyNet < 0, isPos: ch.pgOnlyNet >= 0 });
+
+    const waterfallHtml = rows.map((r, i) => {
+      const cls   = [r.isTotal ? 'num-row--total' : '', r.isFinal ? 'num-row--final' : ''].filter(Boolean).join(' ');
+      const vcls  = r.isNeg ? 'neg' : (r.isPos ? 'pos' : '');
+      const row   = `<div class="num-row ${cls}"><span class="num-row__num">${r.n}</span><span class="num-row__label">${r.label}</span><span class="num-row__calc">${r.calc}</span><span class="num-row__value ${vcls}">${r.value}</span></div>`;
+      const conn  = i < rows.length - 1 ? `<div class="num-row__connector">↓</div>` : '';
+      return row + conn;
+    }).join('');
+
+    // ---- POS Other Cost sub-breakdown ----
+    const posSubBreakdown = (isPos && e.posOtherCostAnnual > 0) ? `
+      <div class="sub-breakdown">
+        <div class="sub-breakdown__title">POS Other Cost breakdown</div>
+        <div class="cost-stack__row"><span class="cost-stack__label">Net terminal procurement</span><span class="cost-stack__value">gross AED ${fmtAED(e.grossTerminalProcAnnual)} − charge AED ${fmtAED(e.grossTerminalRevAnnual)} = AED ${fmtAED(e.netTerminalProcAnnual)}</span></div>
+        <div class="cost-stack__row"><span class="cost-stack__label">Terminal management</span><span class="cost-stack__value">${inp.numTerminals} × AED ${fmtAED(stack.terminalMgmt)}/mo × 12 = AED ${fmtAED(e.terminalMgmtAnnual)}</span></div>
+        <div class="cost-stack__row"><span class="cost-stack__label">Paper roll</span><span class="cost-stack__value">AED ${stack.paperRollPer60.toFixed(2)} / 60 txns × ${fmtAED(e.txnsYear)} txns = AED ${fmtAED(e.paperRollAnnual)}</span></div>
+      </div>
+    ` : '';
+
+    // ---- Footer commentary ----
+    const monthlyNet = ch.pgOnlyNet / 12;
+    let footerCls = '', footer = '';
+    if (ch.pgOnlyNet >= 0) {
+      footerCls = 'pos';
+      footer = `${modeLabel}-only economics are positive — channel contributes AED ${fmtAED(ch.pgOnlyNet)}/yr (AED ${fmtAED(monthlyNet)}/mo) after all costs.`;
+    } else {
+      footerCls = 'neg';
+      footer = `${modeLabel}-only economics are negative — the channel runs at a loss of AED ${fmtAED(Math.abs(ch.pgOnlyNet))}/yr (AED ${fmtAED(Math.abs(monthlyNet))}/mo). Banking revenue is required to cover the gap.`;
+    }
+
     return `
-      <div class="waterfall">
-        <div class="waterfall__row"><span class="waterfall__label">MDR revenue</span><span class="waterfall__value">AED ${fmtAED(ch.requestedMdrPct * ch.pgYearVol)}</span></div>
-        ${!isPos ? `<div class="waterfall__row"><span class="waterfall__label">+ E-com per-txn fee total</span><span class="waterfall__value">AED ${fmtAED(e.aovFeeAnnual)}</span></div>` : ''}
-        ${isPos && e.excessTerminalRevAnnual > 0 ? `<div class="waterfall__row"><span class="waterfall__label">+ Excess terminal revenue (charge AED ${fmtAED(ch.inp.chargedPerTerminal)} − cost AED ${fmtAED(defaultCostsPOS.deviceCost)}) × ${ch.inp.numTerminals}</span><span class="waterfall__value">AED ${fmtAED(e.excessTerminalRevAnnual)}</span></div>` : ''}
-        ${isPos && e.setupFeeAnnual > 0 ? `<div class="waterfall__row"><span class="waterfall__label">+ Setup fee revenue (AED ${fmtAED(ch.inp.setupFeeMonthly)}/mo × 12)</span><span class="waterfall__value">AED ${fmtAED(e.setupFeeAnnual)}</span></div>` : ''}
-        <div class="waterfall__row"><span class="waterfall__label">− Variable ${isPos ? 'POS' : 'PG'} cost</span><span class="waterfall__value neg">AED ${fmtAED(e.variableCostAnnual)}</span></div>
-        ${isPos ? `
-          <div class="waterfall__row" style="background:var(--midnight-10);padding-left:8px;border-radius:6px;"><span class="waterfall__label" style="font-weight:600;">− POS Other Cost</span><span class="waterfall__value neg">AED ${fmtAED(e.posOtherCostAnnual)}</span></div>
-          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Net terminal procurement (gross AED ${fmtAED(e.grossTerminalProcAnnual)} − terminal charge AED ${fmtAED(e.grossTerminalRevAnnual)})</span><span class="waterfall__value neg">AED ${fmtAED(e.netTerminalProcAnnual)}</span></div>
-          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Terminal mgmt (${ch.inp.numTerminals} × AED ${fmtAED(defaultCostsPOS.terminalMgmt)}/mo × 12)</span><span class="waterfall__value neg">AED ${fmtAED(e.terminalMgmtAnnual)}</span></div>
-          <div class="waterfall__row" style="padding-left:20px;font-size:13px;"><span class="waterfall__label">· Paper roll (AED ${defaultCostsPOS.paperRollPer60.toFixed(2)} / 60 txns × ${fmtAED(e.txnsYear)} txns)</span><span class="waterfall__value neg">AED ${fmtAED(e.paperRollAnnual)}</span></div>
-        ` : ''}
-        <div class="waterfall__row"><span class="waterfall__label">${isPos ? 'POS' : 'PG'}-only net</span><span class="waterfall__value ${ch.pgOnlyNet < 0 ? 'neg' : ''}">AED ${fmtAED(ch.pgOnlyNet)} <span style="font-weight:400;color:var(--fg-mild);font-size:12px;">· AED ${fmtAED(ch.pgOnlyNet / 12)} / mo</span></span></div>
+      <div class="calc-detail">
+        <div class="calc-detail__badge">Section 1</div>
+        <h3 class="calc-detail__title">${modeLabel} Economics at Requested MDR</h3>
+        <p class="calc-detail__desc">${modeLabel} revenue at the customer-requested MDR of <b>${(reqPct*100).toFixed(2)}%</b>. ${modeLabel} cost driven by industry, card mix, and fixed cost${isPos ? ' (terminal economics handled separately below).' : '.'}</p>
+
+        <div class="cost-stack">${costStackHtml}</div>
+
+        <div class="num-waterfall">${waterfallHtml}</div>
+
+        ${posSubBreakdown}
+
+        <div class="calc-detail__footer ${footerCls}">${footer}</div>
       </div>
     `;
   }
@@ -1222,7 +1509,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
       </div>
 
       <div class="card">
-        <h3 class="card__title">${modeLabel} Waterfall <span style="font-weight:400;font-size:12px;color:var(--fg-mild);">· annual values</span></h3>
         ${channelWaterfallHTML(channel, ch)}
       </div>
     `;
@@ -1348,11 +1634,13 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
     const pnl = computePnl(s);
     const inp = pnlApprovalInp(s);
 
-    // Auto-init BYO when a fresh gap appears.
+    // Auto-init BYO when a fresh gap appears — start with an equal split
+    // across rate-positive drivers (zeroing any path will then "increase the
+    // others accordingly" via the rebalance logic).
     const pathEmpty = ['balance', 'spend', 'fx', 'loan'].every(k => !s.manualPath[k]);
     if (pnl.shortfall > 0 && pathEmpty) {
       const tmp = {};
-      initApprovalPath(tmp, pnl.shortfall, inp);
+      initByoEqualSplit(tmp, pnl.shortfall, inp);
       Object.entries(tmp).forEach(([k, val]) => setManualPath(k, val));
     }
 
